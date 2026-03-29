@@ -15,22 +15,18 @@ export default function Assessment() {
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [error, setError] = useState(null);
 
-  // Step 1: Load user profile from Firebase, then ask AI to generate questions
   useEffect(() => {
     const generateQuestions = async () => {
       try {
-        // Get user profile
         const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
         const profile = profileSnap.exists() ? profileSnap.data() : {};
 
-        // Ask Claude AI to generate personalized questions
         const prompt = `You are a career assessment expert. Based on this user's profile, generate exactly 10 multiple choice questions to deeply understand their strengths, weaknesses, personality, and interests so you can suggest the perfect career for them.
 
 User Profile:
 - Name: ${profile.name || "Unknown"}
 - Age: ${profile.age || "Unknown"}
 - Role: ${profile.role || "Unknown"}
-- Phone: ${profile.phone || "Unknown"}
 
 Rules:
 - Each question must have exactly 4 options
@@ -55,15 +51,17 @@ Format:
 
         const data = await response.json();
         const text = data.content[0].text;
-
-        // Clean and parse JSON
         const cleaned = text.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleaned);
 
-        // Save questions to Firebase so we don't regenerate on refresh
         await setDoc(
           doc(db, "assessments", currentUser.uid),
-          { questions: parsed, answers: {}, lastQuestionIndex: 0, updatedAt: new Date() },
+          {
+            questions: parsed,
+            answers: {},
+            lastQuestionIndex: 0,
+            updatedAt: new Date(),
+          },
           { merge: true }
         );
 
@@ -76,17 +74,22 @@ Format:
       }
     };
 
-    // Check if questions already exist in Firebase (avoid regenerating)
     const loadOrGenerate = async () => {
-      const snap = await getDoc(doc(db, "assessments", currentUser.uid));
-      if (snap.exists() && snap.data().questions?.length > 0) {
-        const data = snap.data();
-        setQuestions(data.questions);
-        setAnswers(data.answers || {});
-        setCurrentIndex(data.lastQuestionIndex || 0);
+      try {
+        const snap = await getDoc(doc(db, "assessments", currentUser.uid));
+        if (snap.exists() && snap.data().questions?.length > 0) {
+          const data = snap.data();
+          setQuestions(data.questions);
+          setAnswers(data.answers || {});
+          setCurrentIndex(data.lastQuestionIndex || 0);
+          setLoadingQuestions(false);
+        } else {
+          await generateQuestions();
+        }
+      } catch (err) {
+        console.error("Error loading:", err);
+        setError("Something went wrong. Please try again.");
         setLoadingQuestions(false);
-      } else {
-        await generateQuestions();
       }
     };
 
@@ -96,7 +99,11 @@ Format:
   const saveProgress = async (updatedAnswers, index) => {
     await setDoc(
       doc(db, "assessments", currentUser.uid),
-      { answers: updatedAnswers, lastQuestionIndex: index, updatedAt: new Date() },
+      {
+        answers: updatedAnswers,
+        lastQuestionIndex: index,
+        updatedAt: new Date(),
+      },
       { merge: true }
     );
   };
@@ -123,7 +130,6 @@ Format:
     await saveProgress(answers, prevIndex);
   };
 
-  // Loading screen while AI generates questions
   if (loadingQuestions) {
     return (
       <>
@@ -147,7 +153,7 @@ Format:
         <Navbar />
         <main style={styles.centered}>
           <div style={styles.loadingCard}>
-            <p style={{ color: "red" }}>{error}</p>
+            <p style={{ color: "red", marginBottom: 16 }}>{error}</p>
             <button onClick={() => window.location.reload()} style={styles.btn}>
               Try Again
             </button>
@@ -158,7 +164,9 @@ Format:
   }
 
   const question = questions[currentIndex];
-  const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
+  const progressPercent = Math.round(
+    ((currentIndex + 1) / questions.length) * 100
+  );
 
   return (
     <>
@@ -320,7 +328,6 @@ const styles = {
     fontSize: 14,
   },
   btn: {
-    marginTop: 16,
     padding: "12px 24px",
     borderRadius: 10,
     border: "none",
