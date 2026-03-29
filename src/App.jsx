@@ -1,4 +1,5 @@
 import React from "react";
+import Results from "./pages/Results";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Auth from "./pages/Auth";
 import DashboardPublic from "./pages/DashboardPublic";
@@ -55,6 +56,15 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          <Route
+  path="/results"
+  element={
+    <ProtectedRoute>
+      <Results />
+    </ProtectedRoute>
+  }
+/>
 
           <Route
             path="/dashboard"

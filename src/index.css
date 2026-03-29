@@ -109,3 +109,7 @@ a:hover {
   transform: translateY(-1px);
   color: #0d9488 !important;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
