@@ -215,7 +215,7 @@ export default function Navbar() {
               Log in
             </button>
             <button
-              onClick={() => navigate("/signup")}
+              onClick={() => navigate("/login")}
               style={{
                 background: C.marigold,
                 border: "none",
