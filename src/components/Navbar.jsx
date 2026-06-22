@@ -113,12 +113,26 @@ export default function Navbar() {
           Home
         </NavLink>
         {currentUser && (
-          <NavLink
-            to="/dashboard"
-            style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
-          >
-            Dashboard
-          </NavLink>
+          <>
+            <NavLink
+              to="/dashboard"
+              style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
+            >
+              Dashboard
+            </NavLink>
+            <NavLink
+              to="/roadmap"
+              style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
+            >
+              Roadmap
+            </NavLink>
+            <NavLink
+              to="/resume"
+              style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
+            >
+              Resume
+            </NavLink>
+          </>
         )}
       </div>
 

@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate } from "react-router-dom";
 
@@ -26,14 +26,32 @@ export default function Profile() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ name: "", age: "", role: "", phone: "" });
+  const [isPublic, setIsPublic] = useState(false);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+
+  // Pre-fill form from Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    getDoc(doc(db, "users", currentUser.uid)).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setForm({
+          name: data.name || "",
+          age: data.age || "",
+          role: data.role || "",
+          phone: data.phone || "",
+        });
+        setIsPublic(data.public || false);
+      }
+    });
+  }, [currentUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await updateDoc(doc(db, "users", currentUser.uid), form);
+      await updateDoc(doc(db, "users", currentUser.uid), { ...form, public: isPublic });
       navigate("/quiz-instructions");
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -140,6 +158,65 @@ export default function Profile() {
                   />
                 </div>
               ))}
+
+              {/* Public profile toggle */}
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${isPublic ? C.sage : C.mist}`,
+                  background: isPublic ? `${C.sage}08` : C.paper,
+                  cursor: "pointer",
+                  transition: "border-color .15s, background .15s",
+                  userSelect: "none",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>
+                    Public profile
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                    Allow others to view your top career match and progress at{" "}
+                    <span style={{ fontFamily: "monospace" }}>
+                      /u/{currentUser?.uid?.slice(0, 8)}…
+                    </span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    background: isPublic ? C.sage : C.mist,
+                    position: "relative",
+                    flexShrink: 0,
+                    marginLeft: 16,
+                    transition: "background .2s",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      position: "absolute",
+                      top: 3,
+                      left: isPublic ? 23 : 3,
+                      transition: "left .2s",
+                    }}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={isPublic}
+                    onChange={(e) => setIsPublic(e.target.checked)}
+                    style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", margin: 0 }}
+                  />
+                </div>
+              </label>
 
               <button
                 type="submit"

@@ -1,5 +1,33 @@
 import { z } from "zod";
 
+// ── AI Roadmap ────────────────────────────────────────────────────────────────
+
+export const RoadmapSchema = z.object({
+  phases: z
+    .array(
+      z.object({
+        phase: z.number().int().positive(),
+        title: z.string().min(1),
+        blurb: z.string().min(1),
+        weeks: z.string().min(1),
+        skills: z
+          .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
+          .min(1),
+        courses: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              provider: z.string().min(1),
+              url: z.string().min(1),
+            })
+          )
+          .min(1),
+      })
+    )
+    .min(1)
+    .max(8),
+});
+
 // ── Assessment questions ───────────────────────────────────────────────────────
 //
 // The model returns an array of questions where:

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { ResultSchema } from "../schemas";
@@ -23,6 +23,26 @@ export default function Results() {
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [savedCareers, setSavedCareers] = useState([]);
+
+  // Load savedCareers once on mount
+  useEffect(() => {
+    if (!currentUser) return;
+    getDoc(doc(db, "users", currentUser.uid)).then((snap) => {
+      if (snap.exists()) setSavedCareers(snap.data().savedCareers || []);
+    });
+  }, [currentUser]);
+
+  const toggleSave = async (title) => {
+    const isSaved = savedCareers.includes(title);
+    const next = isSaved
+      ? savedCareers.filter((t) => t !== title)
+      : [...savedCareers, title];
+    setSavedCareers(next);
+    await updateDoc(doc(db, "users", currentUser.uid), {
+      savedCareers: isSaved ? arrayRemove(title) : arrayUnion(title),
+    });
+  };
 
   // ── Generate result (lifted so Regenerate button can call it directly) ────
   const generateResult = useCallback(async () => {
@@ -320,24 +340,56 @@ Return ONLY a valid JSON object, no markdown, no extra text:
                   position: "relative",
                 }}
               >
-                {i === 0 && (
-                  <span
+                {/* Top-right: best match badge + star */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 16,
+                    right: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  {i === 0 && (
+                    <span
+                      style={{
+                        background: C.marigold,
+                        color: "#fff",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Best match
+                    </span>
+                  )}
+                  <button
+                    onClick={() => toggleSave(career.title)}
+                    aria-label={savedCareers.includes(career.title) ? "Unsave career" : "Save career"}
+                    title={savedCareers.includes(career.title) ? "Unsave" : "Save"}
                     style={{
-                      position: "absolute",
-                      top: 16,
-                      right: 16,
-                      background: C.marigold,
-                      color: "#fff",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                      letterSpacing: "0.05em",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 20,
+                      lineHeight: 1,
+                      padding: 2,
+                      color: savedCareers.includes(career.title) ? C.marigold : C.mist,
+                      transition: "color .15s",
                     }}
+                    onMouseOver={(e) => (e.currentTarget.style.color = C.marigold)}
+                    onMouseOut={(e) =>
+                      (e.currentTarget.style.color = savedCareers.includes(career.title)
+                        ? C.marigold
+                        : C.mist)
+                    }
                   >
-                    Best match
-                  </span>
-                )}
+                    ★
+                  </button>
+                </div>
                 <h3
                   style={{
                     fontFamily: "'Fraunces', Georgia, serif",

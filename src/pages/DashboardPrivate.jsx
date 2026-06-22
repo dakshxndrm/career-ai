@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
 
 const C = {
   ink: "#16161D",
@@ -15,6 +17,14 @@ const C = {
 export default function DashboardPrivate() {
   const { userData, currentUser } = useAuth();
   const navigate = useNavigate();
+  const [savedCareers, setSavedCareers] = useState([]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    getDoc(doc(db, "users", currentUser.uid)).then((snap) => {
+      if (snap.exists()) setSavedCareers(snap.data().savedCareers || []);
+    });
+  }, [currentUser]);
 
   const displayName =
     userData?.name || currentUser?.email?.split("@")[0] || "Explorer";
@@ -199,7 +209,7 @@ export default function DashboardPrivate() {
             </button>
           </div>
 
-          {/* Results shortcut (visible if role is set) */}
+          {/* Results shortcut */}
           <div
             style={{
               background: "#fff",
@@ -252,7 +262,170 @@ export default function DashboardPrivate() {
               View Report →
             </button>
           </div>
+
+          {/* Roadmap shortcut */}
+          <div
+            style={{
+              background: "#fff",
+              border: `1px solid ${C.mist}`,
+              borderRadius: 18,
+              padding: "28px 28px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <IconBox>📍</IconBox>
+            <h3
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.ink,
+                margin: 0,
+              }}
+            >
+              Learning Roadmap
+            </h3>
+            <p style={{ fontSize: 14, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              Track your skill phases, check off goals, and keep your streak alive.
+            </p>
+            <button
+              onClick={() => navigate("/roadmap")}
+              style={{
+                alignSelf: "flex-start",
+                padding: "10px 20px",
+                borderRadius: 12,
+                border: `1.5px solid ${C.ink}`,
+                background: "transparent",
+                color: C.ink,
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = C.ink;
+                e.currentTarget.style.color = C.paper;
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = C.ink;
+              }}
+            >
+              Open Roadmap →
+            </button>
+          </div>
+
+          {/* Resume shortcut */}
+          <div
+            style={{
+              background: "#fff",
+              border: `1px solid ${C.mist}`,
+              borderRadius: 18,
+              padding: "28px 28px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <IconBox>📄</IconBox>
+            <h3
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.ink,
+                margin: 0,
+              }}
+            >
+              Resume Builder
+            </h3>
+            <p style={{ fontSize: 14, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              Generate a one-page resume from your profile and download as PDF.
+            </p>
+            <button
+              onClick={() => navigate("/resume")}
+              style={{
+                alignSelf: "flex-start",
+                padding: "10px 20px",
+                borderRadius: 12,
+                border: `1.5px solid ${C.ink}`,
+                background: "transparent",
+                color: C.ink,
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = C.ink;
+                e.currentTarget.style.color = C.paper;
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = C.ink;
+              }}
+            >
+              Build Resume →
+            </button>
+          </div>
         </div>
+
+        {/* Saved Careers */}
+        {savedCareers.length > 0 && (
+          <div style={{ marginTop: 40 }}>
+            <h2
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.ink,
+                marginBottom: 16,
+              }}
+            >
+              Saved Careers
+            </h2>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+              }}
+            >
+              {savedCareers.map((title) => (
+                <button
+                  key={title}
+                  onClick={() => navigate("/results")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 18px",
+                    borderRadius: 999,
+                    border: `1.5px solid ${C.marigold}`,
+                    background: `${C.marigold}10`,
+                    color: C.ink,
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "background .15s",
+                  }}
+                  onMouseOver={(e) =>
+                    (e.currentTarget.style.background = `${C.marigold}20`)
+                  }
+                  onMouseOut={(e) =>
+                    (e.currentTarget.style.background = `${C.marigold}10`)
+                  }
+                >
+                  <span style={{ color: C.marigold }}>★</span>
+                  {title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
