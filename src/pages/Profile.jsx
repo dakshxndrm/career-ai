@@ -5,18 +5,29 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate } from "react-router-dom";
 
+const C = {
+  ink: "#16161D",
+  paper: "#FAF8F3",
+  marigold: "#E0922F",
+  sage: "#2F6B57",
+  mist: "#E8E4DA",
+  muted: "#6B6B73",
+};
+
+const FIELDS = [
+  { key: "name",  label: "Full name",  type: "text",   placeholder: "e.g. Alex Sharma" },
+  { key: "age",   label: "Age",        type: "number", placeholder: "e.g. 17" },
+  { key: "role",  label: "Current role / year", type: "text", placeholder: "e.g. Grade 11 student" },
+  { key: "phone", label: "Phone (optional)",    type: "tel",  placeholder: "+91 98765 43210" },
+];
+
 export default function Profile() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({
-    name: "",
-    age: "",
-    role: "",
-    phone: "",
-  });
-
+  const [form, setForm] = useState({ name: "", age: "", role: "", phone: "" });
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,118 +42,127 @@ export default function Profile() {
     }
   };
 
-  const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
   return (
-    <div style={styles.container}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.paper,
+        fontFamily: "'Inter', sans-serif",
+        color: C.ink,
+      }}
+    >
       <Navbar />
-      
-      <main style={styles.main}>
-        <div style={styles.card}>
-          <div style={styles.header}>
-            <h1 style={styles.title}>Complete Your Profile</h1>
-            <p style={styles.subtitle}>Help our AI tailor your career path.</p>
+
+      <main
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          padding: "64px 24px 80px",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 460 }}>
+          {/* Header */}
+          <p
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: C.sage,
+              marginBottom: 10,
+            }}
+          >
+            Step 1 of 3
+          </p>
+          <h1
+            style={{
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontSize: "clamp(26px, 5vw, 34px)",
+              fontWeight: 900,
+              color: C.ink,
+              margin: "0 0 10px",
+              lineHeight: 1.1,
+            }}
+          >
+            Tell us about yourself.
+          </h1>
+          <p style={{ color: C.muted, fontSize: 15, marginBottom: 36, lineHeight: 1.6 }}>
+            Your answers help the AI tailor every question to your background.
+          </p>
+
+          {/* Card */}
+          <div
+            style={{
+              background: "#fff",
+              border: `1px solid ${C.mist}`,
+              borderRadius: 18,
+              padding: "32px 28px",
+            }}
+          >
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {FIELDS.map(({ key, label, type, placeholder }) => (
+                <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label
+                    htmlFor={key}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.10em",
+                      textTransform: "uppercase",
+                      color: focusedField === key ? C.marigold : C.muted,
+                      transition: "color .15s",
+                    }}
+                  >
+                    {label}
+                  </label>
+                  <input
+                    id={key}
+                    type={type}
+                    required={key !== "phone"}
+                    placeholder={placeholder}
+                    value={form[key]}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, [key]: e.target.value }))
+                    }
+                    onFocus={() => setFocusedField(key)}
+                    onBlur={() => setFocusedField(null)}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: `1.5px solid ${focusedField === key ? C.marigold : C.mist}`,
+                      background: C.paper,
+                      color: C.ink,
+                      fontSize: 15,
+                      fontFamily: "'Inter', sans-serif",
+                      outline: "none",
+                      transition: "border-color .15s",
+                    }}
+                  />
+                </div>
+              ))}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  marginTop: 8,
+                  padding: "14px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: loading ? `${C.marigold}88` : C.marigold,
+                  color: "#fff",
+                  fontFamily: "'Inter', sans-serif",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                {loading ? "Saving…" : "Continue to Assessment →"}
+              </button>
+            </form>
           </div>
-
-          <form onSubmit={handleSubmit} style={styles.form}>
-            {["name", "age", "role", "phone"].map((field) => (
-              <div key={field} style={styles.inputGroup}>
-                <label style={styles.label}>{field.toUpperCase()}</label>
-                <input
-                  type={field === "age" ? "number" : "text"}
-                  required
-                  placeholder={`Enter your ${field}`}
-                  style={styles.input}
-                  onChange={(e) => handleChange(field, e.target.value)}
-                />
-              </div>
-            ))}
-
-            <button 
-              type="submit" 
-              disabled={loading}
-              style={loading ? {...styles.button, opacity: 0.7} : styles.button}
-            >
-              {loading ? "Saving..." : "Generate My Career Path →"}
-            </button>
-          </form>
         </div>
       </main>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%)", // Light Teal to Light Blue
-    fontFamily: "'Inter', sans-serif",
-  },
-  main: {
-    display: "flex",
-    justifyContent: "center",
-    padding: "60px 20px",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: "40px",
-    borderRadius: "24px",
-    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.05)",
-    width: "100%",
-    maxWidth: "480px",
-  },
-  header: {
-    textAlign: "center",
-    marginBottom: "32px",
-  },
-  title: {
-    fontSize: "28px",
-    fontWeight: "700",
-    color: "#0f172a", // Dark Slate
-    marginBottom: "8px",
-  },
-  subtitle: {
-    color: "#64748b",
-    fontSize: "14px",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-  },
-  inputGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  label: {
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#0d9488", // Teal 600
-    letterSpacing: "0.05em",
-  },
-  input: {
-    padding: "12px 16px",
-    borderRadius: "12px",
-    border: "1px solid #e2e8f0",
-    fontSize: "16px",
-    outline: "none",
-    transition: "border-color 0.2s",
-    backgroundColor: "#f8fafc",
-  },
-  button: {
-    marginTop: "10px",
-    padding: "14px",
-    borderRadius: "12px",
-    border: "none",
-    backgroundColor: "#0d9488", // Primary Teal
-    color: "white",
-    fontSize: "16px",
-    fontWeight: "600",
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(13, 148, 136, 0.2)",
-    transition: "transform 0.2s, background-color 0.2s",
-  },
-};

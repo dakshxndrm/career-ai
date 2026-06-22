@@ -1,44 +1,57 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
+import { ResultSchema } from "../schemas";
+
+const C = {
+  ink: "#16161D",
+  paper: "#FAF8F3",
+  marigold: "#E0922F",
+  sage: "#2F6B57",
+  mist: "#E8E4DA",
+  muted: "#6B6B73",
+};
 
 export default function Results() {
-    const { currentUser } = useAuth();
-    const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
 
-    const [result, setResult] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errorKind, setErrorKind] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
 
-    useEffect(() => {
-        const generateResult = async () => {
-            try {
-                // Load profile + answers from Firebase
-                const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
-                const assessSnap = await getDoc(doc(db, "assessments", currentUser.uid));
+  // ── Generate result (lifted so Regenerate button can call it directly) ────
+  const generateResult = useCallback(async () => {
+    setLoading(true);
+    setErrorKind(null);
+    setErrorMessage("");
 
-                const profile = profileSnap.exists() ? profileSnap.data() : {};
-                const assessData = assessSnap.exists() ? assessSnap.data() : {};
+    try {
+      const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
+      const assessSnap = await getDoc(doc(db, "assessments", currentUser.uid));
 
-                // If result already exists, just show it
-                if (assessData.result) {
-                    setResult(assessData.result);
-                    setLoading(false);
-                    return;
-                }
+      const profile = profileSnap.exists() ? profileSnap.data() : {};
+      const assessData = assessSnap.exists() ? assessSnap.data() : {};
 
-                const questions = assessData.questions || [];
-                const answers = assessData.answers || {};
+      // Return the cached result if we already have a validated one
+      if (assessData.result) {
+        setResult(assessData.result);
+        setLoading(false);
+        return;
+      }
 
-                // Build Q&A summary for AI
-                const qaSummary = questions
-                    .map((q) => `Q: ${q.question}\nA: ${answers[q.id] || "Not answered"}`)
-                    .join("\n\n");
+      const questions = assessData.questions || [];
+      const answers = assessData.answers || {};
 
-                const prompt = `You are an expert career counselor. Based on this user's profile and quiz answers, analyze them deeply and give a personalized career report.
+      const qaSummary = questions
+        .map((q) => `Q: ${q.question}\nA: ${answers[q.id] || "Not answered"}`)
+        .join("\n\n");
+
+      const prompt = `You are an expert career counselor. Based on this user's profile and quiz answers, analyze them deeply and give a personalized career report.
 
 User Profile:
 - Name: ${profile.name || "Unknown"}
@@ -67,187 +80,524 @@ Return ONLY a valid JSON object, no markdown, no extra text:
   "summary": "2-3 sentence overall summary of this person"
 }`;
 
-                const response = await fetch("/api/chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt }),
-                });
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ prompt }),
+      });
 
-                const data = await response.json();
-                const text = data.content[0].text;
-                const cleaned = text.replace(/```json|```/g, "").trim();
-                const parsed = JSON.parse(cleaned);
+      if (response.status === 429) {
+        const body = await response.json().catch(() => ({}));
+        setErrorKind("rate_limit");
+        setErrorMessage(body.error ?? "Too many requests. Please wait before trying again.");
+        setLoading(false);
+        return;
+      }
 
-                // Save result to Firebase
-                await setDoc(
-                    doc(db, "assessments", currentUser.uid),
-                    { result: parsed, completedAt: new Date() },
-                    { merge: true }
-                );
+      if (!response.ok) {
+        setErrorKind("network");
+        setErrorMessage("The server returned an error. Please try again.");
+        setLoading(false);
+        return;
+      }
 
-                setResult(parsed);
-                setLoading(false);
-            } catch (err) {
-                console.error("Error generating result:", err);
-                setError("Something went wrong generating your results. Please try again.");
-                setLoading(false);
-            }
-        };
+      const data = await response.json();
+      const raw = data?.content?.[0]?.text ?? "";
+      const cleaned = raw.replace(/```json|```/g, "").trim();
 
-        generateResult();
-    }, [currentUser.uid]);
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        console.error("Results: JSON.parse failed.\nRaw output:", raw);
+        setErrorKind("parse");
+        setErrorMessage("The AI returned a response we couldn't read.");
+        setLoading(false);
+        return;
+      }
 
-    if (loading) {
-        return (
-            <>
-                <Navbar />
-                <main style={styles.centered}>
-                    <div style={styles.loadingCard}>
-                        <div style={styles.spinner} />
-                        <h2 style={styles.loadingTitle}>Analyzing your responses...</h2>
-                        <p style={styles.loadingText}>
-                            Our AI is building your personalized career report. This takes about 15 seconds.
-                        </p>
-                    </div>
-                </main>
-            </>
-        );
+      const validation = ResultSchema.safeParse(parsed);
+      if (!validation.success) {
+        console.error("Results: schema validation failed.", validation.error.flatten());
+        setErrorKind("parse");
+        setErrorMessage("The AI returned a response we couldn't read.");
+        setLoading(false);
+        return;
+      }
+
+      const validated = validation.data;
+
+      // Only persist to Firestore once we know the shape is correct
+      await setDoc(
+        doc(db, "assessments", currentUser.uid),
+        { result: validated, completedAt: new Date() },
+        { merge: true }
+      );
+
+      setResult(validated);
+      setLoading(false);
+    } catch (err) {
+      console.error("Results: unexpected error:", err);
+      setErrorKind("network");
+      setErrorMessage("Something went wrong. Please try again.");
+      setLoading(false);
     }
+  }, [currentUser.uid]);
 
-    if (error) {
-        return (
-            <>
-                <Navbar />
-                <main style={styles.centered}>
-                    <div style={styles.loadingCard}>
-                        <p style={{ color: "red", marginBottom: 16 }}>{error}</p>
-                        <button onClick={() => window.location.reload()} style={styles.primaryBtn}>
-                            Try Again
-                        </button>
-                    </div>
-                </main>
-            </>
-        );
-    }
+  useEffect(() => {
+    generateResult();
+  }, [generateResult]);
 
-    return (
-        <>
-            <Navbar />
-            <main style={styles.main}>
-
-                {/* Header */}
-                <div style={styles.header}>
-                    <h1 style={styles.headerTitle}>Your Career Report</h1>
-                    <p style={styles.headerSubtitle}>{result.summary}</p>
-                    <span style={styles.personalityBadge}>{result.personalityType}</span>
-                </div>
-
-                {/* Top Career Matches */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>🎯 Top Career Matches</h2>
-                    <div style={styles.careerGrid}>
-                        {result.topCareers.map((career, i) => (
-                            <div key={i} style={{ ...styles.careerCard, borderColor: i === 0 ? "#0d9488" : "#e2e8f0" }}>
-                                {i === 0 && <span style={styles.bestMatchBadge}>Best Match</span>}
-                                <h3 style={styles.careerTitle}>{career.title}</h3>
-                                <div style={styles.matchBarWrapper}>
-                                    <div style={{ ...styles.matchBarFill, width: `${career.match}%` }} />
-                                </div>
-                                <span style={styles.matchPercent}>{career.match}% match</span>
-                                <p style={styles.careerReason}>{career.reason}</p>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                {/* Strengths */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>💪 Your Strengths</h2>
-                    <div style={styles.tagsRow}>
-                        {result.strengths.map((s, i) => (
-                            <span key={i} style={styles.strengthTag}>{s}</span>
-                        ))}
-                    </div>
-                </section>
-
-                {/* Skills to Learn */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>📚 Skills to Learn</h2>
-                    <div style={styles.tagsRow}>
-                        {result.skillsToLearn.map((s, i) => (
-                            <span key={i} style={styles.skillTag}>{s}</span>
-                        ))}
-                    </div>
-                </section>
-
-                {/* Roadmap */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>🛣️ Your Roadmap</h2>
-                    <div style={styles.roadmap}>
-                        {result.roadmap.map((step, i) => (
-                            <div key={i} style={styles.roadmapStep}>
-                                <div style={styles.stepNumber}>{step.step}</div>
-                                <div style={styles.stepContent}>
-                                    <h3 style={styles.stepTitle}>{step.title}</h3>
-                                    <p style={styles.stepDesc}>{step.description}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                {/* Retake Button */}
-                <div style={{ textAlign: "center", marginTop: 48, marginBottom: 64 }}>
-                    <button
-                        onClick={async () => {
-                            await setDoc(
-                                doc(db, "assessments", currentUser.uid),
-                                { questions: [], answers: {}, result: null, lastQuestionIndex: 0 },
-                                { merge: true }
-                            );
-                            navigate("/assessment");
-                        }}
-                        style={styles.retakeBtn}
-                    >
-                        Retake Assessment
-                    </button>
-                </div>
-
-            </main>
-        </>
+  // ── Regenerate: clears the cached (bad or missing) result, retries ────────
+  const handleRegenerate = async () => {
+    await setDoc(
+      doc(db, "assessments", currentUser.uid),
+      { result: null },
+      { merge: true }
     );
+    generateResult();
+  };
+
+  // ── Retake: wipes the full assessment and goes back to question 1 ─────────
+  const handleRetake = () => {
+    setDoc(
+      doc(db, "assessments", currentUser.uid),
+      { questions: [], answers: {}, result: null, lastQuestionIndex: 0 },
+      { merge: true }
+    );
+    navigate("/assessment");
+  };
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <PageShell>
+        <main style={centered}>
+          <StatusCard>
+            <Spinner />
+            <h2 style={statusTitle}>Analysing your responses…</h2>
+            <p style={statusBody}>
+              The AI is building your personalised career report. This takes about 15 seconds.
+            </p>
+          </StatusCard>
+        </main>
+      </PageShell>
+    );
+  }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (errorKind) {
+    const isParseError = errorKind === "parse";
+    return (
+      <PageShell>
+        <main style={centered}>
+          <StatusCard>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: `${C.marigold}18`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 22,
+                margin: "0 auto 20px",
+              }}
+              aria-hidden="true"
+            >
+              {isParseError ? "🗺" : "⚠"}
+            </div>
+
+            <h2 style={{ ...statusTitle, marginBottom: 8 }}>
+              {isParseError ? "Couldn't generate your report" : "Something went wrong"}
+            </h2>
+
+            <p style={{ ...statusBody, marginBottom: 24 }}>{errorMessage}</p>
+
+            {isParseError ? (
+              <button onClick={handleRegenerate} style={primaryBtn}>
+                Regenerate Report
+              </button>
+            ) : (
+              <button
+                onClick={errorKind === "rate_limit" ? undefined : generateResult}
+                disabled={errorKind === "rate_limit"}
+                style={{
+                  ...primaryBtn,
+                  ...(errorKind === "rate_limit" ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+                }}
+              >
+                Try Again
+              </button>
+            )}
+          </StatusCard>
+        </main>
+      </PageShell>
+    );
+  }
+
+  // ── Report ────────────────────────────────────────────────────────────────
+  return (
+    <PageShell>
+      <main
+        style={{
+          padding: "56px 24px 80px",
+          maxWidth: 760,
+          margin: "0 auto",
+          fontFamily: "'Inter', sans-serif",
+          color: C.ink,
+        }}
+      >
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: 52 }}>
+          <p
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: C.sage,
+              marginBottom: 12,
+            }}
+          >
+            Career Atlas — Your Report
+          </p>
+          <h1
+            style={{
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontSize: "clamp(28px, 5vw, 38px)",
+              fontWeight: 900,
+              color: C.ink,
+              margin: "0 0 14px",
+              lineHeight: 1.1,
+            }}
+          >
+            Your Career Map
+          </h1>
+          <p
+            style={{
+              fontSize: 16,
+              color: C.muted,
+              lineHeight: 1.7,
+              maxWidth: 560,
+              margin: "0 auto 18px",
+            }}
+          >
+            {result.summary}
+          </p>
+          <span
+            style={{
+              display: "inline-block",
+              background: `${C.sage}18`,
+              color: C.sage,
+              padding: "6px 16px",
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {result.personalityType}
+          </span>
+        </div>
+
+        {/* Top careers */}
+        <Section label="Top Career Matches">
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {result.topCareers.map((career, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: "22px 24px",
+                  borderRadius: 16,
+                  background: "#fff",
+                  border: `2px solid ${i === 0 ? C.marigold : C.mist}`,
+                  position: "relative",
+                }}
+              >
+                {i === 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 16,
+                      right: 16,
+                      background: C.marigold,
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Best match
+                  </span>
+                )}
+                <h3
+                  style={{
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontSize: 18,
+                    fontWeight: 800,
+                    color: C.ink,
+                    margin: "0 0 10px",
+                  }}
+                >
+                  {career.title}
+                </h3>
+                <div
+                  style={{
+                    width: "100%",
+                    height: 5,
+                    background: C.mist,
+                    borderRadius: 999,
+                    marginBottom: 6,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${career.match}%`,
+                      background: i === 0 ? C.marigold : C.sage,
+                      borderRadius: 999,
+                    }}
+                  />
+                </div>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: i === 0 ? C.marigold : C.sage,
+                  }}
+                >
+                  {career.match}% match
+                </span>
+                <p style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.65 }}>
+                  {career.reason}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Strengths */}
+        <Section label="Your Strengths">
+          <TagRow>
+            {result.strengths.map((s, i) => (
+              <Tag key={i} bg={`${C.marigold}14`} color={C.marigold}>{s}</Tag>
+            ))}
+          </TagRow>
+        </Section>
+
+        {/* Skills */}
+        <Section label="Skills to Develop">
+          <TagRow>
+            {result.skillsToLearn.map((s, i) => (
+              <Tag key={i} bg={`${C.sage}12`} color={C.sage}>{s}</Tag>
+            ))}
+          </TagRow>
+        </Section>
+
+        {/* Roadmap */}
+        <Section label="Your Roadmap">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {result.roadmap.map((step, i) => (
+              <div key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    background: C.ink,
+                    color: C.paper,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    flexShrink: 0,
+                    fontFamily: "'Fraunces', Georgia, serif",
+                  }}
+                >
+                  {step.step}
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    background: "#fff",
+                    border: `1px solid ${C.mist}`,
+                    borderRadius: 12,
+                    padding: "14px 18px",
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontFamily: "'Fraunces', Georgia, serif",
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: C.ink,
+                      margin: "0 0 4px",
+                    }}
+                  >
+                    {step.title}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 14, color: C.muted, lineHeight: 1.6 }}>
+                    {step.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Retake */}
+        <div style={{ textAlign: "center", marginTop: 48 }}>
+          <button
+            onClick={handleRetake}
+            style={{
+              padding: "13px 32px",
+              borderRadius: 12,
+              border: `2px solid ${C.ink}`,
+              background: "transparent",
+              color: C.ink,
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = C.ink;
+              e.currentTarget.style.color = C.paper;
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = C.ink;
+            }}
+          >
+            Retake Assessment
+          </button>
+        </div>
+      </main>
+    </PageShell>
+  );
 }
 
-const styles = {
-    main: { padding: "48px 24px", maxWidth: 800, margin: "0 auto" },
-    centered: { display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" },
-    loadingCard: { textAlign: "center", padding: 48, background: "white", borderRadius: 20, border: "1px solid #e2e8f0", maxWidth: 420 },
-    loadingTitle: { fontSize: 20, fontWeight: 700, marginBottom: 12, color: "#0f172a" },
-    loadingText: { color: "#64748b", fontSize: 14, lineHeight: 1.6 },
-    spinner: { width: 40, height: 40, border: "4px solid #e2e8f0", borderTop: "4px solid #0d9488", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 24px" },
-    header: { textAlign: "center", marginBottom: 48 },
-    headerTitle: { fontSize: 32, fontWeight: 800, color: "#0f172a", marginBottom: 12 },
-    headerSubtitle: { fontSize: 16, color: "#64748b", lineHeight: 1.7, maxWidth: 600, margin: "0 auto 16px" },
-    personalityBadge: { display: "inline-block", background: "#e0fdf4", color: "#0d9488", padding: "6px 16px", borderRadius: 999, fontSize: 14, fontWeight: 600 },
-    section: { marginBottom: 40 },
-    sectionTitle: { fontSize: 20, fontWeight: 700, color: "#0f172a", marginBottom: 20 },
-    careerGrid: { display: "flex", flexDirection: "column", gap: 16 },
-    careerCard: { padding: 24, borderRadius: 16, background: "white", border: "2px solid #e2e8f0", position: "relative" },
-    bestMatchBadge: { position: "absolute", top: 16, right: 16, background: "#0d9488", color: "white", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 999 },
-    careerTitle: { fontSize: 18, fontWeight: 700, color: "#0f172a", marginBottom: 12 },
-    matchBarWrapper: { width: "100%", height: 6, background: "#e5e7eb", borderRadius: 999, marginBottom: 6 },
-    matchBarFill: { height: "100%", background: "linear-gradient(90deg, #0d9488, #3b82f6)", borderRadius: 999 },
-    matchPercent: { fontSize: 13, fontWeight: 600, color: "#0d9488" },
-    careerReason: { marginTop: 12, fontSize: 14, color: "#64748b", lineHeight: 1.6 },
-    tagsRow: { display: "flex", flexWrap: "wrap", gap: 10 },
-    strengthTag: { background: "#eff6ff", color: "#1d4ed8", padding: "8px 16px", borderRadius: 999, fontSize: 14, fontWeight: 500 },
-    skillTag: { background: "#fdf4ff", color: "#7c3aed", padding: "8px 16px", borderRadius: 999, fontSize: 14, fontWeight: 500 },
-    roadmap: { display: "flex", flexDirection: "column", gap: 16 },
-    roadmapStep: { display: "flex", gap: 16, alignItems: "flex-start" },
-    stepNumber: { width: 36, height: 36, borderRadius: "50%", background: "#0d9488", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16, flexShrink: 0 },
-    stepContent: { flex: 1, background: "white", padding: "16px 20px", borderRadius: 12, border: "1px solid #e2e8f0" },
-    stepTitle: { fontSize: 16, fontWeight: 700, color: "#0f172a", marginBottom: 6 },
-    stepDesc: { fontSize: 14, color: "#64748b", lineHeight: 1.6 },
-    primaryBtn: { padding: "12px 24px", borderRadius: 10, border: "none", background: "#0d9488", color: "white", cursor: "pointer", fontSize: 15 },
-    retakeBtn: { padding: "14px 32px", borderRadius: 12, border: "2px solid #0d9488", background: "transparent", color: "#0d9488", cursor: "pointer", fontSize: 15, fontWeight: 600 },
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function PageShell({ children }) {
+  return (
+    <div style={{ minHeight: "100vh", background: C.paper }}>
+      <Navbar />
+      {children}
+    </div>
+  );
+}
+
+function Section({ label, children }) {
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <h2
+        style={{
+          fontFamily: "'Fraunces', Georgia, serif",
+          fontSize: 20,
+          fontWeight: 800,
+          color: C.ink,
+          marginBottom: 16,
+        }}
+      >
+        {label}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function TagRow({ children }) {
+  return <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{children}</div>;
+}
+
+function Tag({ children, bg, color }) {
+  return (
+    <span
+      style={{
+        background: bg,
+        color,
+        padding: "8px 14px",
+        borderRadius: 999,
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function StatusCard({ children }) {
+  return (
+    <div
+      style={{
+        textAlign: "center",
+        padding: 48,
+        background: "#fff",
+        borderRadius: 20,
+        border: `1px solid ${C.mist}`,
+        maxWidth: 420,
+        width: "100%",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <div
+      style={{
+        width: 40,
+        height: 40,
+        border: `4px solid ${C.mist}`,
+        borderTop: `4px solid ${C.marigold}`,
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite",
+        margin: "0 auto 24px",
+      }}
+    />
+  );
+}
+
+const centered = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  minHeight: "80vh",
+  padding: "24px",
+};
+
+const statusTitle = {
+  fontFamily: "'Fraunces', Georgia, serif",
+  fontSize: 20,
+  fontWeight: 700,
+  marginBottom: 12,
+  color: C.ink,
+};
+
+const statusBody = { color: C.muted, fontSize: 14, lineHeight: 1.6 };
+
+const primaryBtn = {
+  padding: "12px 24px",
+  borderRadius: 12,
+  border: "none",
+  background: C.marigold,
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 15,
+  fontWeight: 700,
+  fontFamily: "'Inter', sans-serif",
 };

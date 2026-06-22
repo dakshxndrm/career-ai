@@ -1,19 +1,21 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  signupUser,
-  loginUser,
-  signInWithGoogle,
-} from "../auth";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { signupUser, loginUser, signInWithGoogle } from "../auth";
+
+const C = {
+  ink: "#16161D",
+  paper: "#FAF8F3",
+  marigold: "#E0922F",
+  sage: "#2F6B57",
+  mist: "#E8E4DA",
+  muted: "#6B6B73",
+};
 
 export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-
   const navigate = useNavigate();
 
   /* ---------- EMAIL / PASSWORD ---------- */
@@ -22,7 +24,6 @@ export default function Auth() {
       alert("Enter email and password");
       return;
     }
-
     setLoading(true);
     try {
       if (isLogin) {
@@ -31,180 +32,226 @@ export default function Auth() {
         await signupUser(email, password, "student");
       }
       navigate("/profile");
-
     } catch (err) {
       alert(err.message);
     }
     setLoading(false);
   };
 
-  /* ---------- GOOGLE LOGIN ---------- */
+  /* ---------- GOOGLE ---------- */
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
       await signInWithGoogle();
       navigate("/profile");
-
     } catch (err) {
       alert(err.message);
     }
     setLoading(false);
-  };
-
-  /* ---------- DUMMY LOGIN (DEV MODE) ---------- */
-  const handleDummyLogin = async () => {
-    const dummyUserId = "dummy-user";
-
-    await setDoc(doc(db, "users", dummyUserId), {
-      email: "demo@careerai.dev",
-      role: "student",
-      onboardingCompleted: false,
-      provider: "dummy",
-    });
-
-    navigate("/profile");
-
   };
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "linear-gradient(135deg, #020617, #0f172a, #020617)",
+        background: C.ink,
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "0 32px",
+        padding: "40px 24px",
+        fontFamily: "'Inter', sans-serif",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{ maxWidth: 520, width: "100%" }}>
-        {/* BRAND */}
-        <h1 style={{ fontSize: 40, fontWeight: 900, marginBottom: 8 }}>
-          Career AI
-        </h1>
-        <p style={{ color: "#94a3b8", marginBottom: 40 }}>
-          Your personalised career compass
-        </p>
+      {/* Faint topo rings behind the card */}
+      <svg
+        aria-hidden="true"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity: 0.05 }}
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 800 600"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        {[0,1,2,3,4,5].map((i) => (
+          <ellipse key={i} cx="400" cy="300" rx={80+i*70} ry={50+i*45}
+            fill="none" stroke={C.paper} strokeWidth="1" />
+        ))}
+      </svg>
 
-        {/* AUTH BOX */}
-        <div
+      {/* Wordmark */}
+      <div style={{ marginBottom: 36, textAlign: "center", position: "relative" }}>
+        <span
           style={{
-            background: "rgba(255,255,255,0.05)",
-            padding: 32,
-            borderRadius: 16,
-            border: "1px solid rgba(255,255,255,0.1)",
+            display: "block",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: C.marigold,
+            marginBottom: 8,
           }}
         >
-          <h2 style={{ marginBottom: 8 }}>
-            {isLogin ? "Welcome back" : "Create your account"}
-          </h2>
+          Career Atlas
+        </span>
+        <h1
+          style={{
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontSize: "clamp(28px, 5vw, 38px)",
+            fontWeight: 900,
+            color: C.paper,
+            margin: 0,
+            lineHeight: 1.1,
+          }}
+        >
+          {isLogin ? "Welcome back." : "Chart your course."}
+        </h1>
+        <p style={{ color: C.muted, marginTop: 10, fontSize: 15 }}>
+          {isLogin
+            ? "Log in to continue your career journey."
+            : "Start discovering careers aligned with who you are."}
+        </p>
+      </div>
 
-          <p style={{ color: "#94a3b8", marginBottom: 24 }}>
-            {isLogin
-              ? "Log in to continue your career journey"
-              : "Start discovering careers aligned with who you are"}
-          </p>
+      {/* Card */}
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth: 440,
+          background: "rgba(250,248,243,0.06)",
+          border: `1px solid rgba(232,228,218,0.18)`,
+          borderRadius: 18,
+          padding: "32px 28px",
+        }}
+      >
+        <input
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={inputStyle}
+        />
 
-          <input
-            placeholder="Email address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
-          />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ ...inputStyle, marginBottom: 20 }}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        />
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
-          />
+        {/* Primary: marigold */}
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          style={{
+            width: "100%",
+            padding: "13px",
+            borderRadius: 12,
+            border: "none",
+            background: loading ? `${C.marigold}99` : C.marigold,
+            color: "#fff",
+            fontFamily: "'Inter', sans-serif",
+            fontSize: 15,
+            fontWeight: 700,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Please wait…" : isLogin ? "Log in" : "Create account"}
+        </button>
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            style={primaryBtn}
-          >
-            {loading
-              ? "Please wait..."
-              : isLogin
-              ? "Login"
-              : "Create account"}
-          </button>
-
-          <button
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            style={secondaryBtn}
-          >
-            Continue with Google
-          </button>
-
-          <button
-            onClick={handleDummyLogin}
-            style={{
-              ...secondaryBtn,
-              border: "1px dashed rgba(255,255,255,0.3)",
-            }}
-          >
-            Skip Login (Demo Mode)
-          </button>
-
-          <p
-            onClick={() => setIsLogin(!isLogin)}
-            style={{
-              marginTop: 20,
-              textAlign: "center",
-              cursor: "pointer",
-              color: "#60a5fa",
-              fontSize: 14,
-            }}
-          >
-            {isLogin
-              ? "New here? Create an account"
-              : "Already have an account? Login"}
-          </p>
+        <div style={dividerStyle}>
+          <span style={dividerLine} />
+          <span style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>or continue with</span>
+          <span style={dividerLine} />
         </div>
+
+        {/* Google — ink outline on dark */}
+        <button
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          style={outlineBtn}
+        >
+          <GoogleIcon />
+          Google
+        </button>
+
+        <p
+          onClick={() => setIsLogin((v) => !v)}
+          style={{
+            marginTop: 22,
+            textAlign: "center",
+            cursor: "pointer",
+            color: C.marigold,
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          {isLogin ? "New here? Create an account" : "Already have an account? Log in"}
+        </p>
       </div>
     </div>
   );
 }
 
-/* ---------- STYLES ---------- */
+/* ── Shared sub-components ── */
+
+function GoogleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+      <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+/* ── Styles ── */
 
 const inputStyle = {
   width: "100%",
-  padding: "14px 16px",
-  marginBottom: 14,
+  padding: "13px 14px",
+  marginBottom: 12,
   borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.15)",
-  background: "rgba(255,255,255,0.06)",
-  color: "white",
+  border: `1px solid rgba(232,228,218,0.22)`,
+  background: "rgba(250,248,243,0.07)",
+  color: "#FAF8F3",
   fontSize: 14,
+  fontFamily: "'Inter', sans-serif",
+  outline: "none",
+  boxSizing: "border-box",
 };
 
-const primaryBtn = {
+const outlineBtn = {
   width: "100%",
-  padding: 14,
+  padding: "12px",
   borderRadius: 12,
-  background: "linear-gradient(135deg, #2563eb, #3b82f6)",
-  border: "none",
-  color: "white",
-  fontSize: 15,
+  border: `1.5px solid rgba(232,228,218,0.30)`,
+  background: "transparent",
+  color: "#FAF8F3",
+  fontFamily: "'Inter', sans-serif",
+  fontSize: 14,
   fontWeight: 600,
   cursor: "pointer",
-  marginTop: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
 };
 
-const secondaryBtn = {
-  width: "100%",
-  padding: 14,
-  borderRadius: 12,
-  background: "transparent",
-  border: "1px solid rgba(255,255,255,0.25)",
-  color: "white",
-  fontSize: 14,
-  cursor: "pointer",
-  marginTop: 12,
+const dividerStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  margin: "18px 0 14px",
+};
+
+const dividerLine = {
+  display: "block",
+  flex: 1,
+  height: 1,
+  background: "rgba(232,228,218,0.18)",
 };

@@ -1,43 +1,255 @@
 import React from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+
+const C = {
+  ink: "#16161D",
+  paper: "#FAF8F3",
+  marigold: "#E0922F",
+  sage: "#2F6B57",
+  mist: "#E8E4DA",
+  muted: "#6B6B73",
+};
 
 export default function DashboardPrivate() {
   const { userData, currentUser } = useAuth();
+  const navigate = useNavigate();
+
+  const displayName =
+    userData?.name || currentUser?.email?.split("@")[0] || "Explorer";
 
   return (
-    <div style={styles.container}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.paper,
+        fontFamily: "'Inter', sans-serif",
+        color: C.ink,
+      }}
+    >
       <Navbar />
 
-      <main style={styles.main}>
-        <div style={styles.welcomeSection}>
-          <h1 style={styles.greeting}>
-            Welcome back, <span style={styles.highlight}>{userData?.name || currentUser?.email?.split('@')[0]}</span> ✨
+      <main
+        style={{
+          padding: "64px clamp(24px, 8vw, 72px)",
+          maxWidth: 1100,
+          margin: "0 auto",
+        }}
+      >
+        {/* Welcome header */}
+        <div style={{ marginBottom: 48 }}>
+          <p
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: C.sage,
+              marginBottom: 10,
+            }}
+          >
+            Your Dashboard
+          </p>
+          <h1
+            style={{
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontSize: "clamp(28px, 5vw, 40px)",
+              fontWeight: 900,
+              color: C.ink,
+              margin: 0,
+              lineHeight: 1.1,
+            }}
+          >
+            Welcome back,{" "}
+            <span style={{ color: C.marigold }}>{displayName}</span>.
           </h1>
-          <p style={styles.subtitle}>Here is your career overview and next steps.</p>
+          <p style={{ color: C.muted, fontSize: 16, marginTop: 10 }}>
+            Here is your career overview and next steps.
+          </p>
         </div>
 
-        <div style={styles.grid}>
-          {/* Role Status Card */}
-          <div style={styles.card}>
-            <div style={styles.iconCircle}>💼</div>
-            <h3 style={styles.cardTitle}>Current Focus</h3>
-            <p style={styles.roleText}>{userData?.role || "Role not set"}</p>
-            <div style={styles.badge}>Active Path</div>
+        {/* Cards grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 20,
+          }}
+        >
+          {/* Current focus */}
+          <div
+            style={{
+              background: "#fff",
+              border: `1px solid ${C.mist}`,
+              borderRadius: 18,
+              padding: "28px 28px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <IconBox>🗺</IconBox>
+            <h3
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.ink,
+                margin: 0,
+              }}
+            >
+              Current Focus
+            </h3>
+            <p style={{ fontSize: 15, color: C.ink, fontWeight: 500, margin: 0 }}>
+              {userData?.role || "Role not set"}
+            </p>
+            <span
+              style={{
+                alignSelf: "flex-start",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: C.sage,
+                background: `${C.sage}14`,
+                padding: "4px 10px",
+                borderRadius: 6,
+              }}
+            >
+              Active path
+            </span>
           </div>
 
-          {/* Assessment CTA Card */}
-          <div style={styles.cardHighlight}>
-            <div style={styles.iconCircleLarge}>🧠</div>
-            <h3 style={styles.cardTitleWhite}>Career Assessment</h3>
-            <p style={styles.cardDescWhite}>
-              Complete your AI-driven evaluation to unlock personalized job matches.
+          {/* Assessment CTA — ink hero card */}
+          <div
+            style={{
+              background: C.ink,
+              borderRadius: 18,
+              padding: "28px 28px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            {/* Mini topo rings */}
+            <svg
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                bottom: -20,
+                right: -20,
+                opacity: 0.07,
+                pointerEvents: "none",
+              }}
+              width="160"
+              height="160"
+              viewBox="0 0 160 160"
+            >
+              {[0,1,2,3].map((i) => (
+                <circle key={i} cx="140" cy="140" r={25+i*25}
+                  fill="none" stroke="#FAF8F3" strokeWidth="1" />
+              ))}
+            </svg>
+
+            <IconBox dark>🧭</IconBox>
+            <h3
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.paper,
+                margin: 0,
+              }}
+            >
+              Career Assessment
+            </h3>
+            <p
+              style={{
+                fontSize: 14,
+                color: C.mist,
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
+              Complete your AI-driven evaluation to unlock personalised job
+              matches and your full career roadmap.
             </p>
             <button
-              style={styles.ctaButton}
-              onClick={() => alert("Assessment starts in Phase 2")}
+              onClick={() => navigate("/assessment")}
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 4,
+                padding: "11px 22px",
+                borderRadius: 12,
+                border: "none",
+                background: C.marigold,
+                color: "#fff",
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.opacity = "0.88")}
+              onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
             >
               Continue Assessment →
+            </button>
+          </div>
+
+          {/* Results shortcut (visible if role is set) */}
+          <div
+            style={{
+              background: "#fff",
+              border: `1px solid ${C.mist}`,
+              borderRadius: 18,
+              padding: "28px 28px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <IconBox>📋</IconBox>
+            <h3
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 20,
+                fontWeight: 800,
+                color: C.ink,
+                margin: 0,
+              }}
+            >
+              Your Results
+            </h3>
+            <p style={{ fontSize: 14, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              View your career report, top matches, and personal roadmap.
+            </p>
+            <button
+              onClick={() => navigate("/results")}
+              style={{
+                alignSelf: "flex-start",
+                padding: "10px 20px",
+                borderRadius: 12,
+                border: `1.5px solid ${C.ink}`,
+                background: "transparent",
+                color: C.ink,
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = C.ink;
+                e.currentTarget.style.color = C.paper;
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = C.ink;
+              }}
+            >
+              View Report →
             </button>
           </div>
         </div>
@@ -46,122 +258,23 @@ export default function DashboardPrivate() {
   );
 }
 
-const styles = {
-  container: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%)",
-    fontFamily: "'Inter', sans-serif",
-  },
-  main: {
-    padding: "60px 72px",
-    maxWidth: "1200px",
-    margin: "0 auto",
-  },
-  welcomeSection: {
-    marginBottom: "40px",
-  },
-  greeting: {
-    fontSize: "36px",
-    fontWeight: "800",
-    color: "#0f172a",
-    margin: 0,
-  },
-  highlight: {
-    color: "#0d9488", // Teal
-  },
-  subtitle: {
-    color: "#64748b",
-    fontSize: "18px",
-    marginTop: "8px",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-    gap: "24px",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: "32px",
-    borderRadius: "24px",
-    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.05)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  cardHighlight: {
-    background: "linear-gradient(135deg, #0d9488 0%, #065f46 100%)",
-    padding: "32px",
-    borderRadius: "24px",
-    boxShadow: "0 10px 25px rgba(13, 148, 136, 0.3)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  iconCircle: {
-    width: "48px",
-    height: "48px",
-    borderRadius: "12px",
-    backgroundColor: "#f0fdfa",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "24px",
-    marginBottom: "20px",
-  },
-  iconCircleLarge: {
-    width: "56px",
-    height: "56px",
-    borderRadius: "16px",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "28px",
-    marginBottom: "20px",
-  },
-  cardTitle: {
-    fontSize: "20px",
-    fontWeight: "700",
-    color: "#0f172a",
-    margin: "0 0 8px 0",
-  },
-  cardTitleWhite: {
-    fontSize: "20px",
-    fontWeight: "700",
-    color: "white",
-    margin: "0 0 8px 0",
-  },
-  roleText: {
-    fontSize: "16px",
-    color: "#334155",
-    fontWeight: "500",
-    marginBottom: "16px",
-  },
-  cardDescWhite: {
-    fontSize: "15px",
-    color: "#ccfbf1",
-    marginBottom: "24px",
-    lineHeight: "1.5",
-  },
-  badge: {
-    padding: "6px 12px",
-    borderRadius: "100px",
-    backgroundColor: "#ccfbf1",
-    color: "#0d9488",
-    fontSize: "12px",
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  ctaButton: {
-    backgroundColor: "white",
-    color: "#0d9488",
-    border: "none",
-    padding: "12px 24px",
-    borderRadius: "12px",
-    fontWeight: "700",
-    fontSize: "15px",
-    cursor: "pointer",
-    transition: "transform 0.2s",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  },
-};
+function IconBox({ children, dark }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        background: dark ? "rgba(250,248,243,0.12)" : C.mist,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 22,
+        flexShrink: 0,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
