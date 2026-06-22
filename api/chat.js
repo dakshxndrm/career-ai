@@ -12,7 +12,7 @@
  * "gemini"  — Google Gemini free tier
  *   MODEL_PROVIDER=gemini
  *   GEMINI_API_KEY=<key>   ← aistudio.google.com/app/apikey
- *   Uses gemini-1.5-flash (1 500 free requests / day as of mid-2025).
+ *   Uses gemini-2.5-flash (1 500 free requests / day as of mid-2025).
  *
  * "anthropic"  — Anthropic Claude
  *   MODEL_PROVIDER=anthropic
