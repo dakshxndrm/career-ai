@@ -4,7 +4,7 @@
 
 ## Live Demo
 
-[career-ai-eta-seven.vercel.app](https://career-ai-eta-seven.vercel.app)
+[career-ai-220204.vercel.app](https://career-ai-220204.vercel.app)
 
 <!-- Add a GIF demo here -->
 
