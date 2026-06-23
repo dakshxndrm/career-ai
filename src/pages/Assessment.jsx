@@ -68,8 +68,9 @@ export default function Assessment() {
       const profile = profileSnap.exists() ? profileSnap.data() : {};
       const itemSnap = await getDoc(itemRef);
       const itemData = itemSnap.exists() ? itemSnap.data() : {};
-      const goal = itemData.goal || "career";
-      const title = itemData.title || "";
+      const goal      = itemData.goal      || "career";
+      const title     = itemData.title     || "";
+      const objective = itemData.objective || "";
 
       const goalContext =
         goal === "skill"
@@ -101,6 +102,7 @@ User Profile:
 - Age: ${profile.age || "Unknown"}
 - Current role / year: ${profile.role || "Unknown"}
 - Assessment goal: ${goal === "skill" ? `Learn "${title}"` : `Build a career path toward "${title}"`}
+- Stated goal: ${objective || "Not specified"}
 
 Tailoring rules you MUST follow:
 1. Anchor every single question to "${title}" — a reader should be able to tell the quiz is about that specific ${goal === "skill" ? "skill" : "career"} without reading the title.
@@ -108,11 +110,17 @@ Tailoring rules you MUST follow:
 3. Do not write questions that could belong to a generic career quiz. Every question must feel like it was written specifically for someone interested in "${title}".
 
 ${goalContext}
+${objective ? `The user's stated goal is: "${objective}". Make sure at least one or two questions probe how close their current habits or knowledge are to this specific goal.` : ""}
 
-Step 1 — Decide the question count.
-Choose between 20 and 30 MCQ questions. A user with a thin profile (age/role unknown) needs more questions to establish a baseline; a user whose role already reveals direction can have fewer, sharper ones.
+DIAGNOSTIC BLOCK — these must be the FIRST 4–6 questions in the array. They measure the user's CURRENT knowledge of "${title}" — not preferences. Include exactly:
+1. A prior-exposure question (e.g. "Have you ever formally learned or practised ${title} before?") with options spanning: Never → Self-taught a little → Took a course or class → Years of practice.
+2. A self-rated proficiency question with options: Complete beginner → Basic understanding → Intermediate → Advanced.
+3. Two to four genuine knowledge-check MCQs whose difficulty is calibrated to "${title}" (e.g. for singing: pitch/breathing/scales; for Python: variables/loops/functions; for finance: concepts like compound interest or P&L). Each must have one clearly correct answer and plausible distractors so the report can infer real skill level. Phrase them as normal quiz questions — do NOT label them "test" or mark the correct option in any way. Each still needs exactly 4 options.
 
-Step 2 — Write the multiple-choice questions (type "mcq").
+Step 1 — Decide the remaining question count.
+After the diagnostic block, add between 16 and 26 more MCQ questions (total including diagnostic must stay at or below 34, leaving room for the one open question). A user with a thin profile needs more general questions; a user whose role already reveals direction can have fewer.
+
+Step 2 — Write the remaining multiple-choice questions (type "mcq").
 - Each question must have exactly 4 options. Do NOT include an "Other" option — the UI adds it automatically.
 - All 4 options must be meaningfully distinct — no near-synonyms or obvious filler.
 - Questions must span the dimensions listed above for this goal type; do not over-index on any single dimension.

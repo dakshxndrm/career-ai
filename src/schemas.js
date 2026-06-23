@@ -49,6 +49,21 @@ export const ResultSchema = z.object({
     .min(1),
   personalityType: z.string().min(1),
   summary: z.string().min(1),
+  // ── Knowledge diagnostic ──────────────────────────────────────────────────
+  currentLevel:  z.enum(["beginner", "intermediate", "advanced"]).optional(),
+  levelEvidence: z.string().min(1).optional(),
+  knownAreas:    z.array(z.string()).default([]).optional(),
+  gapAreas:      z.array(z.string()).min(1).optional(),
+  // ── Goal plan ────────────────────────────────────────────────────────────
+  goalPlan: z.object({
+    goal:          z.string().min(1),
+    feasibility:   z.string().min(1),
+    estimatedTime: z.string().min(1),
+    milestones: z.array(z.object({
+      title:  z.string().min(1),
+      detail: z.string().min(1),
+    })).min(3),
+  }).optional(),
 });
 
 // ── AI Roadmap phases ─────────────────────────────────────────────────────────
@@ -86,6 +101,7 @@ export const AssessmentItemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   goal: z.enum(["career", "skill"]),
+  objective: z.string().optional().default(""),
   questions: QuestionsSchema.optional().default([]),
   answers: z.record(z.string()).optional().default({}),
   result: ResultSchema.nullable().optional().default(null),

@@ -43,11 +43,18 @@ export default function QuizInstructions() {
 
   const [goal, setGoal] = useState("career");
   const [title, setTitle] = useState("");
+  const [objective, setObjective] = useState("");
   const [titleFocused, setTitleFocused] = useState(false);
+  const [objectiveFocused, setObjectiveFocused] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const titlePlaceholder =
     goal === "career" ? "e.g. Frontend Developer, Doctor, UX Designer" : "e.g. Learn Python, Master Public Speaking";
+
+  const objectivePlaceholder =
+    goal === "skill"
+      ? "e.g. Be able to sing confidently in front of people / build my own websites"
+      : "e.g. Land a frontend developer job at a product company within a year";
 
   const handleStart = async () => {
     const trimmed = title.trim();
@@ -61,6 +68,7 @@ export default function QuizInstructions() {
         id,
         title: trimmed,
         goal,
+        objective: objective.trim(),
         questions: [],
         answers: {},
         result: null,
@@ -213,6 +221,50 @@ export default function QuizInstructions() {
               fontFamily: "'Inter', sans-serif",
               outline: "none",
               boxSizing: "border-box",
+              transition: "border-color .15s",
+            }}
+          />
+        </div>
+
+        {/* Objective */}
+        <div style={{ marginBottom: 32 }}>
+          <label
+            htmlFor="assessment-objective"
+            style={{
+              display: "block",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.10em",
+              textTransform: "uppercase",
+              color: objectiveFocused ? C.marigold : C.muted,
+              marginBottom: 8,
+              transition: "color .15s",
+            }}
+          >
+            What do you want to achieve?
+          </label>
+          <textarea
+            id="assessment-objective"
+            rows={3}
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            onFocus={() => setObjectiveFocused(true)}
+            onBlur={() => setObjectiveFocused(false)}
+            placeholder={objectivePlaceholder}
+            maxLength={300}
+            style={{
+              width: "100%",
+              padding: "13px 15px",
+              borderRadius: 12,
+              border: `1.5px solid ${objectiveFocused ? C.marigold : C.mist}`,
+              background: C.paper,
+              color: C.ink,
+              fontSize: 15,
+              fontFamily: "'Inter', sans-serif",
+              outline: "none",
+              boxSizing: "border-box",
+              resize: "vertical",
+              lineHeight: 1.6,
               transition: "border-color .15s",
             }}
           />

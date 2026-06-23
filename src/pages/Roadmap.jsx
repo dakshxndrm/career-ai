@@ -134,10 +134,19 @@ export default function Roadmap() {
     try {
       const itemSnap = await getDoc(itemRef);
       const itemData = itemSnap.exists() ? itemSnap.data() : {};
-      const result = itemData.result;
+      const result     = itemData.result;
       const topCareers = result?.topCareers?.map((c) => c.title).join(", ") || itemData.title || "undecided career";
+      const currentLevel = result?.currentLevel || null;
+      const knownAreas   = result?.knownAreas   || [];
+      const gapAreas     = result?.gapAreas     || [];
+      const objective    = itemData.objective   || "";
 
-      const prompt = `You are a career coach. Generate a personalised learning roadmap for someone whose top career matches are: ${topCareers}.
+      const levelInstruction = currentLevel
+        ? `The learner's current level is ${currentLevel}. Start the roadmap at the appropriate point — do NOT include basics they already know${knownAreas.length ? ` (${knownAreas.join(", ")})` : ""}; focus phases on their key gap areas${gapAreas.length ? ` (${gapAreas.join(", ")})` : ""}. For a beginner, start from fundamentals; for intermediate or advanced, start from where their gaps begin.`
+        : "";
+
+      const prompt = `You are a career coach. Generate a personalised learning roadmap for someone whose top career matches are: ${topCareers}.${objective ? `\nTheir stated goal is: "${objective}".` : ""}
+${levelInstruction}
 
 Return ONLY valid JSON, no markdown, no extra text:
 {

@@ -76,8 +76,9 @@ export default function Results() {
         return;
       }
 
-      const questions = itemData.questions || [];
-      const answers = itemData.answers || {};
+      const questions  = itemData.questions  || [];
+      const answers    = itemData.answers    || {};
+      const objective  = itemData.objective  || "";
 
       const qaSummary = questions
         .map((q) => `Q: ${q.question}\nA: ${answers[q.id] || "Not answered"}`)
@@ -90,10 +91,14 @@ User Profile:
 - Age: ${profile.age || "Unknown"}
 - Role: ${profile.role || "Unknown"}
 - Assessment title: ${itemData.title || "Unknown"}
-- Goal: ${itemData.goal === "skill" ? "Learning a specific skill" : "Discovering career paths"}
+- Goal type: ${itemData.goal === "skill" ? "Learning a specific skill" : "Discovering career paths"}${objective ? `\n- Stated goal: ${objective}` : ""}
 
-Quiz Answers:
+Quiz Answers (the FIRST 4–6 are diagnostic questions measuring current knowledge):
 ${qaSummary}
+
+DIAGNOSIS — Based ESPECIALLY on the diagnostic answers (prior exposure, self-rated proficiency, and the knowledge-check questions), judge the user's REAL current level with "${itemData.title || "this topic"}". Set currentLevel to beginner/intermediate/advanced, write levelEvidence citing 1–2 of their specific answers, list knownAreas they already have, and gapAreas (key skills they still need for "${itemData.title || "this topic"}"). Do NOT over-rate beginners.${objective ? `
+
+GOAL PLAN — The user's goal is: "${objective}". After assessing their currentLevel and gapAreas, produce goalPlan: restate the goal verbatim, give an honest feasibility read from where they are now, an estimatedTime range (e.g. "4–6 months at ~6 hrs/week"), and 3–6 ordered milestones that bridge their current level (and gapAreas) to this goal. Be encouraging but realistic — do not promise unrealistic timelines.` : ""}
 
 Return ONLY a valid JSON object, no markdown, no extra text:
 {
@@ -111,7 +116,19 @@ Return ONLY a valid JSON object, no markdown, no extra text:
     { "step": 4, "title": "Step title", "description": "What to do" }
   ],
   "personalityType": "2-3 word personality label",
-  "summary": "2-3 sentence overall summary"
+  "summary": "2-3 sentence overall summary",
+  "currentLevel": "beginner",
+  "levelEvidence": "1-2 sentences citing their diagnostic answers",
+  "knownAreas": ["area they already know"],
+  "gapAreas": ["key gap 1", "key gap 2", "key gap 3"]${objective ? `,
+  "goalPlan": {
+    "goal": "restated user goal",
+    "feasibility": "honest 1-2 sentence read of how reachable this is from current level",
+    "estimatedTime": "e.g. 4–6 months at ~6 hrs/week",
+    "milestones": [
+      { "title": "Milestone title", "detail": "What to do or achieve at this stage" }
+    ]
+  }` : ""}
 }`;
 
       const idToken = await auth.currentUser.getIdToken();
@@ -256,6 +273,66 @@ Return ONLY a valid JSON object, no markdown, no extra text:
           </span>
         </div>
 
+        {/* ── Where you are now ── */}
+        {result?.currentLevel && (
+          <Section label="Where you are now">
+            <div style={{ background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 16, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <LevelBadge level={result.currentLevel} />
+                {result.levelEvidence && (
+                  <p style={{ margin: 0, fontSize: 14, color: C.muted, lineHeight: 1.6, flex: 1, minWidth: 200 }}>{result.levelEvidence}</p>
+                )}
+              </div>
+              {result.knownAreas?.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: C.sage, margin: "0 0 8px" }}>You already know</p>
+                  <TagRow>{result.knownAreas.map((s, i) => <Tag key={i} bg={`${C.sage}14`} color={C.sage}>{s}</Tag>)}</TagRow>
+                </div>
+              )}
+              {result.gapAreas?.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: C.marigold, margin: "0 0 8px" }}>Key gaps to close</p>
+                  <TagRow>{result.gapAreas.map((s, i) => <Tag key={i} bg={`${C.marigold}14`} color={C.marigold}>{s}</Tag>)}</TagRow>
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* ── Your path to the goal ── */}
+        {result?.goalPlan && (
+          <Section label="Your path to the goal">
+            <div style={{ background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 16, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+              <p style={{ fontSize: 15, fontWeight: 600, color: C.ink, margin: 0, lineHeight: 1.55 }}>
+                🎯 {result.goalPlan.goal}
+              </p>
+              <p style={{ fontSize: 14, color: C.muted, margin: 0, lineHeight: 1.65 }}>
+                {result.goalPlan.feasibility}
+              </p>
+              {result.goalPlan.estimatedTime && (
+                <span style={{ alignSelf: "flex-start", background: `${C.sage}14`, color: C.sage, padding: "6px 16px", borderRadius: 999, fontSize: 13, fontWeight: 700 }}>
+                  ⏱ {result.goalPlan.estimatedTime}
+                </span>
+              )}
+              {result.goalPlan.milestones?.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
+                  {result.goalPlan.milestones.map((m, i) => (
+                    <div key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: C.paper, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0, fontFamily: "'Fraunces', Georgia, serif" }}>
+                        {i + 1}
+                      </div>
+                      <div style={{ flex: 1, background: C.paper, border: `1px solid ${C.mist}`, borderRadius: 12, padding: "12px 16px" }}>
+                        <h4 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{m.title}</h4>
+                        <p style={{ margin: 0, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>{m.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
         {/* Top careers */}
         <Section label="Top Career Matches">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -345,6 +422,20 @@ function PageShell({ children }) {
     <PageTransition>
       <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>
     </PageTransition>
+  );
+}
+
+function LevelBadge({ level }) {
+  const cfg = {
+    beginner:     { label: "Beginner",     bg: `${C.mist}`,            color: C.muted  },
+    intermediate: { label: "Intermediate", bg: `${C.marigold}18`,      color: C.marigold },
+    advanced:     { label: "Advanced",     bg: `${C.sage}18`,          color: C.sage   },
+  };
+  const { label, bg, color } = cfg[level] || cfg.beginner;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: bg, color, padding: "7px 16px", borderRadius: 999, fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", flexShrink: 0 }}>
+      {level === "beginner" ? "🌱" : level === "intermediate" ? "📈" : "🏆"} {label}
+    </span>
   );
 }
 
