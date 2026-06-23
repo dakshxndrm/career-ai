@@ -80,30 +80,55 @@ export default function Assessment() {
 
       const goalContext =
         goal === "skill"
-          ? `The user wants to learn: "${title}". Focus questions on their current skill level, learning style, and specific goals around this skill.`
-          : `The user's career interest is: "${title}". Focus questions on career fit, strengths, values, and personality.`;
+          ? `This entire quiz is about one thing: helping the user learn "${title}".
+Every question must directly probe some aspect of that skill. Cover:
+  • Current skill level — what have they already tried, practised, or studied related to "${title}"?
+  • Motivation — why do they want to learn it, what outcome are they chasing?
+  • Learning style — how do they best absorb new skills (videos, practice, reading, projects, coaching)?
+  • Time commitment — how much time per week can they realistically dedicate?
+  • Strengths that transfer — which existing abilities will help them pick up "${title}" faster?
+  • Gaps and blockers — what holds them back (confidence, tools, time, prior knowledge)?
+  • Desired end goal — what does "mastery" look like to them for "${title}"?
+Never drift to generic career topics. Every question must be anchored to "${title}".`
+          : `This entire quiz is about one thing: helping the user explore and build a path toward "${title}".
+Every question must directly probe some aspect of that career. Cover:
+  • Career fit — do their interests, values, and personality align with "${title}"?
+  • Current proximity — how close are they already (study, experience, exposure)?
+  • Motivation — what draws them to "${title}" specifically, not just the field in general?
+  • Working style — environment, collaboration, autonomy, pace preferences relevant to "${title}"?
+  • Strengths — which of their skills and traits are assets for someone in "${title}"?
+  • Gaps — what skills, knowledge, or experience are they missing for "${title}"?
+  • Long-term vision — what does a successful career in "${title}" look like for them in 5–10 years?
+Never drift to unrelated careers. Every question must be anchored to "${title}".`;
 
-      const prompt = `You are a career assessment expert. Generate a personalised quiz for this user.
+      const prompt = `You are an expert career and skills assessor. Your task is to generate a deeply personalised quiz for one specific user. The quiz has a single focus — everything revolves around: "${title}".
 
 User Profile:
 - Name: ${profile.name || "Unknown"}
 - Age: ${profile.age || "Unknown"}
-- Role: ${profile.role || "Unknown"}
-- Goal: ${goal === "skill" ? "Learn a specific skill" : "Discover career paths"}
-- Context: ${goalContext}
+- Current role / year: ${profile.role || "Unknown"}
+- Assessment goal: ${goal === "skill" ? `Learn "${title}"` : `Build a career path toward "${title}"`}
 
-Step 1 — Decide the question count (20–30 MCQ questions based on profile depth).
+Tailoring rules you MUST follow:
+1. Anchor every single question to "${title}" — a reader should be able to tell the quiz is about that specific ${goal === "skill" ? "skill" : "career"} without reading the title.
+2. Calibrate vocabulary and framing to the user's age (${profile.age || "unknown"}) and role (${profile.role || "unknown"}). For a school student use accessible, concrete language; for a professional use field-appropriate terminology.
+3. Do not write questions that could belong to a generic career quiz. Every question must feel like it was written specifically for someone interested in "${title}".
+
+${goalContext}
+
+Step 1 — Decide the question count.
+Choose between 20 and 30 MCQ questions. A user with a thin profile (age/role unknown) needs more questions to establish a baseline; a user whose role already reveals direction can have fewer, sharper ones.
 
 Step 2 — Write the multiple-choice questions (type "mcq").
-- Cover: interests, personality, work style, strengths, weaknesses, values, skills, motivation, environment, learning style.
-- Each question must have exactly 4 options. Do NOT add an "Other" option — the UI adds it automatically.
-- Options must be meaningfully distinct.
+- Each question must have exactly 4 options. Do NOT include an "Other" option — the UI adds it automatically.
+- All 4 options must be meaningfully distinct — no near-synonyms or obvious filler.
+- Questions must span the dimensions listed above for this goal type; do not over-index on any single dimension.
 
 Step 3 — Add exactly one open-ended question as the FINAL item (type "open").
-- Ask the user to describe their goals or the impact they want to make.
+- Ask the user to describe, in their own words, what achieving their goal with "${title}" looks like and why it matters to them.
 - options must be an empty array [].
 
-Return ONLY a valid JSON array — no markdown, no explanation.
+Return ONLY a valid JSON array — no markdown, no explanation, no wrapper object.
 
 Format:
 [
@@ -120,7 +145,7 @@ Format:
   },
   {
     "id": "Q{N}",
-    "question": "In your own words, describe what excites you most about your future.",
+    "question": "In your own words, describe what achieving your goal with \\"${title}\\" looks like and why it matters to you.",
     "type": "open",
     "options": []
   }
