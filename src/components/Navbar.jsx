@@ -126,12 +126,6 @@ export default function Navbar() {
             >
               Roadmap
             </NavLink>
-            <NavLink
-              to="/resume"
-              style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
-            >
-              Resume
-            </NavLink>
           </>
         )}
       </div>

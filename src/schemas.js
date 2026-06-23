@@ -1,41 +1,6 @@
 import { z } from "zod";
 
-// ── AI Roadmap ────────────────────────────────────────────────────────────────
-
-export const RoadmapSchema = z.object({
-  phases: z
-    .array(
-      z.object({
-        phase: z.number().int().positive(),
-        title: z.string().min(1),
-        blurb: z.string().min(1),
-        weeks: z.string().min(1),
-        skills: z
-          .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
-          .min(1),
-        courses: z
-          .array(
-            z.object({
-              title: z.string().min(1),
-              provider: z.string().min(1),
-              url: z.string().min(1),
-            })
-          )
-          .min(1),
-      })
-    )
-    .min(1)
-    .max(8),
-});
-
 // ── Assessment questions ───────────────────────────────────────────────────────
-//
-// The model returns an array of questions where:
-//   - "mcq"  questions have exactly 4 options (the UI appends "Other" client-side)
-//   - "open" questions have no options — the user types a free-form answer
-//
-// Expected count: 20–30 mcq questions + 1 open question at the end (21–31 total).
-// Schema allows 2–35 to accommodate model variability without being too strict.
 
 const McqQuestionSchema = z.object({
   id: z.string().min(1),
@@ -48,7 +13,6 @@ const OpenQuestionSchema = z.object({
   id: z.string().min(1),
   question: z.string().min(1),
   type: z.literal("open"),
-  // Model may include an empty array or omit the field — both are fine.
   options: z.array(z.string()).max(0).optional().default([]),
 });
 
@@ -85,4 +49,47 @@ export const ResultSchema = z.object({
     .min(1),
   personalityType: z.string().min(1),
   summary: z.string().min(1),
+});
+
+// ── AI Roadmap phases ─────────────────────────────────────────────────────────
+
+export const RoadmapSchema = z.object({
+  phases: z
+    .array(
+      z.object({
+        phase: z.number().int().positive(),
+        title: z.string().min(1),
+        blurb: z.string().min(1),
+        weeks: z.string().min(1),
+        skills: z
+          .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
+          .min(1),
+        courses: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              provider: z.string().min(1),
+              url: z.string().min(1),
+            })
+          )
+          .min(1),
+      })
+    )
+    .min(1)
+    .max(8),
+});
+
+// ── Assessment item (subcollection doc) ──────────────────────────────────────
+// Stored at assessments/{uid}/items/{assessmentId}
+
+export const AssessmentItemSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  goal: z.enum(["career", "skill"]),
+  questions: QuestionsSchema.optional().default([]),
+  answers: z.record(z.string()).optional().default({}),
+  result: ResultSchema.nullable().optional().default(null),
+  roadmap: z.array(z.any()).nullable().optional().default(null), // roadmapPhases array
+  createdAt: z.any().optional(),
+  updatedAt: z.any().optional(),
 });

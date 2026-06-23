@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ResultSchema } from "../schemas";
 
 const C = {
@@ -18,14 +18,26 @@ const C = {
 export default function Results() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const assessmentId = searchParams.get("id");
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [savedCareers, setSavedCareers] = useState([]);
+  const [itemTitle, setItemTitle] = useState("");
 
-  // Load savedCareers once on mount
+  // Redirect if no id
+  useEffect(() => {
+    if (!assessmentId) navigate("/profile", { replace: true });
+  }, [assessmentId, navigate]);
+
+  const itemRef = assessmentId
+    ? doc(db, "assessments", currentUser.uid, "items", assessmentId)
+    : null;
+
+  // Load savedCareers
   useEffect(() => {
     if (!currentUser) return;
     getDoc(doc(db, "users", currentUser.uid)).then((snap) => {
@@ -35,48 +47,49 @@ export default function Results() {
 
   const toggleSave = async (title) => {
     const isSaved = savedCareers.includes(title);
-    const next = isSaved
-      ? savedCareers.filter((t) => t !== title)
-      : [...savedCareers, title];
-    setSavedCareers(next);
+    setSavedCareers(isSaved ? savedCareers.filter((t) => t !== title) : [...savedCareers, title]);
     await updateDoc(doc(db, "users", currentUser.uid), {
       savedCareers: isSaved ? arrayRemove(title) : arrayUnion(title),
     });
   };
 
-  // ── Generate result (lifted so Regenerate button can call it directly) ────
+  // ── Generate result ────────────────────────────────────────────────────────
   const generateResult = useCallback(async () => {
+    if (!itemRef) return;
     setLoading(true);
     setErrorKind(null);
     setErrorMessage("");
 
     try {
       const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
-      const assessSnap = await getDoc(doc(db, "assessments", currentUser.uid));
+      const itemSnap = await getDoc(itemRef);
 
       const profile = profileSnap.exists() ? profileSnap.data() : {};
-      const assessData = assessSnap.exists() ? assessSnap.data() : {};
+      const itemData = itemSnap.exists() ? itemSnap.data() : {};
 
-      // Return the cached result if we already have a validated one
-      if (assessData.result) {
-        setResult(assessData.result);
+      setItemTitle(itemData.title || "");
+
+      if (itemData.result) {
+        setResult(itemData.result);
         setLoading(false);
         return;
       }
 
-      const questions = assessData.questions || [];
-      const answers = assessData.answers || {};
+      const questions = itemData.questions || [];
+      const answers = itemData.answers || {};
 
       const qaSummary = questions
         .map((q) => `Q: ${q.question}\nA: ${answers[q.id] || "Not answered"}`)
         .join("\n\n");
 
-      const prompt = `You are an expert career counselor. Based on this user's profile and quiz answers, analyze them deeply and give a personalized career report.
+      const prompt = `You are an expert career counselor. Based on this user's profile and quiz answers, give a personalized career report.
 
 User Profile:
 - Name: ${profile.name || "Unknown"}
 - Age: ${profile.age || "Unknown"}
 - Role: ${profile.role || "Unknown"}
+- Assessment title: ${itemData.title || "Unknown"}
+- Goal: ${itemData.goal === "skill" ? "Learning a specific skill" : "Discovering career paths"}
 
 Quiz Answers:
 ${qaSummary}
@@ -84,29 +97,26 @@ ${qaSummary}
 Return ONLY a valid JSON object, no markdown, no extra text:
 {
   "topCareers": [
-    { "title": "Career Name", "match": 95, "reason": "2-3 sentence explanation why this fits them" },
+    { "title": "Career Name", "match": 95, "reason": "2-3 sentence explanation" },
     { "title": "Career Name", "match": 85, "reason": "2-3 sentence explanation" },
     { "title": "Career Name", "match": 75, "reason": "2-3 sentence explanation" }
   ],
   "strengths": ["strength 1", "strength 2", "strength 3", "strength 4"],
   "skillsToLearn": ["skill 1", "skill 2", "skill 3", "skill 4", "skill 5"],
   "roadmap": [
-    { "step": 1, "title": "Step title", "description": "What to do in this step" },
-    { "step": 2, "title": "Step title", "description": "What to do in this step" },
-    { "step": 3, "title": "Step title", "description": "What to do in this step" },
-    { "step": 4, "title": "Step title", "description": "What to do in this step" }
+    { "step": 1, "title": "Step title", "description": "What to do" },
+    { "step": 2, "title": "Step title", "description": "What to do" },
+    { "step": 3, "title": "Step title", "description": "What to do" },
+    { "step": 4, "title": "Step title", "description": "What to do" }
   ],
   "personalityType": "2-3 word personality label",
-  "summary": "2-3 sentence overall summary of this person"
+  "summary": "2-3 sentence overall summary"
 }`;
 
       const idToken = await auth.currentUser.getIdToken();
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ prompt }),
       });
 
@@ -117,7 +127,6 @@ Return ONLY a valid JSON object, no markdown, no extra text:
         setLoading(false);
         return;
       }
-
       if (!response.ok) {
         setErrorKind("network");
         setErrorMessage("The server returned an error. Please try again.");
@@ -150,14 +159,7 @@ Return ONLY a valid JSON object, no markdown, no extra text:
       }
 
       const validated = validation.data;
-
-      // Only persist to Firestore once we know the shape is correct
-      await setDoc(
-        doc(db, "assessments", currentUser.uid),
-        { result: validated, completedAt: new Date() },
-        { merge: true }
-      );
-
+      await setDoc(itemRef, { result: validated, updatedAt: serverTimestamp() }, { merge: true });
       setResult(validated);
       setLoading(false);
     } catch (err) {
@@ -166,30 +168,20 @@ Return ONLY a valid JSON object, no markdown, no extra text:
       setErrorMessage("Something went wrong. Please try again.");
       setLoading(false);
     }
-  }, [currentUser.uid]);
+  }, [currentUser.uid, assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    generateResult();
-  }, [generateResult]);
+    if (assessmentId) generateResult();
+  }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Regenerate: clears the cached (bad or missing) result, retries ────────
   const handleRegenerate = async () => {
-    await setDoc(
-      doc(db, "assessments", currentUser.uid),
-      { result: null },
-      { merge: true }
-    );
+    if (!itemRef) return;
+    await setDoc(itemRef, { result: null }, { merge: true });
     generateResult();
   };
 
-  // ── Retake: wipes the full assessment and goes back to question 1 ─────────
   const handleRetake = () => {
-    setDoc(
-      doc(db, "assessments", currentUser.uid),
-      { questions: [], answers: {}, result: null, lastQuestionIndex: 0 },
-      { merge: true }
-    );
-    navigate("/assessment");
+    navigate("/quiz-instructions");
   };
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -200,9 +192,7 @@ Return ONLY a valid JSON object, no markdown, no extra text:
           <StatusCard>
             <Spinner />
             <h2 style={statusTitle}>Analysing your responses…</h2>
-            <p style={statusBody}>
-              The AI is building your personalised career report. This takes about 15 seconds.
-            </p>
+            <p style={statusBody}>The AI is building your personalised career report. This takes about 15 seconds.</p>
           </StatusCard>
         </main>
       </PageShell>
@@ -216,41 +206,20 @@ Return ONLY a valid JSON object, no markdown, no extra text:
       <PageShell>
         <main style={centered}>
           <StatusCard>
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: "50%",
-                background: `${C.marigold}18`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 22,
-                margin: "0 auto 20px",
-              }}
-              aria-hidden="true"
-            >
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${C.marigold}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, margin: "0 auto 20px" }} aria-hidden="true">
               {isParseError ? "🗺" : "⚠"}
             </div>
-
             <h2 style={{ ...statusTitle, marginBottom: 8 }}>
               {isParseError ? "Couldn't generate your report" : "Something went wrong"}
             </h2>
-
             <p style={{ ...statusBody, marginBottom: 24 }}>{errorMessage}</p>
-
             {isParseError ? (
-              <button onClick={handleRegenerate} style={primaryBtn}>
-                Regenerate Report
-              </button>
+              <button onClick={handleRegenerate} style={primaryBtn}>Regenerate Report</button>
             ) : (
               <button
                 onClick={errorKind === "rate_limit" ? undefined : generateResult}
                 disabled={errorKind === "rate_limit"}
-                style={{
-                  ...primaryBtn,
-                  ...(errorKind === "rate_limit" ? { opacity: 0.5, cursor: "not-allowed" } : {}),
-                }}
+                style={{ ...primaryBtn, ...(errorKind === "rate_limit" ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
               >
                 Try Again
               </button>
@@ -264,64 +233,24 @@ Return ONLY a valid JSON object, no markdown, no extra text:
   // ── Report ────────────────────────────────────────────────────────────────
   return (
     <PageShell>
-      <main
-        style={{
-          padding: "56px 24px 80px",
-          maxWidth: 760,
-          margin: "0 auto",
-          fontFamily: "'Inter', sans-serif",
-          color: C.ink,
-        }}
-      >
+      <main style={{ padding: "56px 24px 80px", maxWidth: 760, margin: "0 auto", fontFamily: "'Inter', sans-serif", color: C.ink }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 52 }}>
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              color: C.sage,
-              marginBottom: 12,
-            }}
-          >
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.sage, marginBottom: 12 }}>
             Career Atlas — Your Report
           </p>
-          <h1
-            style={{
-              fontFamily: "'Fraunces', Georgia, serif",
-              fontSize: "clamp(28px, 5vw, 38px)",
-              fontWeight: 900,
-              color: C.ink,
-              margin: "0 0 14px",
-              lineHeight: 1.1,
-            }}
-          >
+          {itemTitle && (
+            <p style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>
+              Assessment: <strong style={{ color: C.ink }}>{itemTitle}</strong>
+            </p>
+          )}
+          <h1 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: "clamp(28px, 5vw, 38px)", fontWeight: 900, color: C.ink, margin: "0 0 14px", lineHeight: 1.1 }}>
             Your Career Map
           </h1>
-          <p
-            style={{
-              fontSize: 16,
-              color: C.muted,
-              lineHeight: 1.7,
-              maxWidth: 560,
-              margin: "0 auto 18px",
-            }}
-          >
+          <p style={{ fontSize: 16, color: C.muted, lineHeight: 1.7, maxWidth: 560, margin: "0 auto 18px" }}>
             {result.summary}
           </p>
-          <span
-            style={{
-              display: "inline-block",
-              background: `${C.sage}18`,
-              color: C.sage,
-              padding: "6px 16px",
-              borderRadius: 999,
-              fontSize: 13,
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-            }}
-          >
+          <span style={{ display: "inline-block", background: `${C.sage}18`, color: C.sage, padding: "6px 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, letterSpacing: "0.04em" }}>
             {result.personalityType}
           </span>
         </div>
@@ -330,208 +259,77 @@ Return ONLY a valid JSON object, no markdown, no extra text:
         <Section label="Top Career Matches">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {result.topCareers.map((career, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: "22px 24px",
-                  borderRadius: 16,
-                  background: "#fff",
-                  border: `2px solid ${i === 0 ? C.marigold : C.mist}`,
-                  position: "relative",
-                }}
-              >
-                {/* Top-right: best match badge + star */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 16,
-                    right: 16,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
+              <div key={i} style={{ padding: "22px 24px", borderRadius: 16, background: "#fff", border: `2px solid ${i === 0 ? C.marigold : C.mist}`, position: "relative" }}>
+                <div style={{ position: "absolute", top: 16, right: 16, display: "flex", alignItems: "center", gap: 8 }}>
                   {i === 0 && (
-                    <span
-                      style={{
-                        background: C.marigold,
-                        color: "#fff",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "3px 10px",
-                        borderRadius: 999,
-                        letterSpacing: "0.05em",
-                      }}
-                    >
+                    <span style={{ background: C.marigold, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, letterSpacing: "0.05em" }}>
                       Best match
                     </span>
                   )}
                   <button
                     onClick={() => toggleSave(career.title)}
                     aria-label={savedCareers.includes(career.title) ? "Unsave career" : "Save career"}
-                    title={savedCareers.includes(career.title) ? "Unsave" : "Save"}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 20,
-                      lineHeight: 1,
-                      padding: 2,
-                      color: savedCareers.includes(career.title) ? C.marigold : C.mist,
-                      transition: "color .15s",
-                    }}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 2, color: savedCareers.includes(career.title) ? C.marigold : C.mist, transition: "color .15s" }}
                     onMouseOver={(e) => (e.currentTarget.style.color = C.marigold)}
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.color = savedCareers.includes(career.title)
-                        ? C.marigold
-                        : C.mist)
-                    }
+                    onMouseOut={(e) => (e.currentTarget.style.color = savedCareers.includes(career.title) ? C.marigold : C.mist)}
                   >
                     ★
                   </button>
                 </div>
-                <h3
-                  style={{
-                    fontFamily: "'Fraunces', Georgia, serif",
-                    fontSize: 18,
-                    fontWeight: 800,
-                    color: C.ink,
-                    margin: "0 0 10px",
-                  }}
-                >
+                <h3 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, fontWeight: 800, color: C.ink, margin: "0 0 10px" }}>
                   {career.title}
                 </h3>
-                <div
-                  style={{
-                    width: "100%",
-                    height: 5,
-                    background: C.mist,
-                    borderRadius: 999,
-                    marginBottom: 6,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${career.match}%`,
-                      background: i === 0 ? C.marigold : C.sage,
-                      borderRadius: 999,
-                    }}
-                  />
+                <div style={{ width: "100%", height: 5, background: C.mist, borderRadius: 999, marginBottom: 6, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${career.match}%`, background: i === 0 ? C.marigold : C.sage, borderRadius: 999 }} />
                 </div>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: i === 0 ? C.marigold : C.sage,
-                  }}
-                >
-                  {career.match}% match
-                </span>
-                <p style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.65 }}>
-                  {career.reason}
-                </p>
+                <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? C.marigold : C.sage }}>{career.match}% match</span>
+                <p style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.65 }}>{career.reason}</p>
               </div>
             ))}
           </div>
         </Section>
 
-        {/* Strengths */}
         <Section label="Your Strengths">
-          <TagRow>
-            {result.strengths.map((s, i) => (
-              <Tag key={i} bg={`${C.marigold}14`} color={C.marigold}>{s}</Tag>
-            ))}
-          </TagRow>
+          <TagRow>{result.strengths.map((s, i) => <Tag key={i} bg={`${C.marigold}14`} color={C.marigold}>{s}</Tag>)}</TagRow>
         </Section>
 
-        {/* Skills */}
         <Section label="Skills to Develop">
-          <TagRow>
-            {result.skillsToLearn.map((s, i) => (
-              <Tag key={i} bg={`${C.sage}12`} color={C.sage}>{s}</Tag>
-            ))}
-          </TagRow>
+          <TagRow>{result.skillsToLearn.map((s, i) => <Tag key={i} bg={`${C.sage}12`} color={C.sage}>{s}</Tag>)}</TagRow>
         </Section>
 
-        {/* Roadmap */}
         <Section label="Your Roadmap">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {result.roadmap.map((step, i) => (
               <div key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    background: C.ink,
-                    color: C.paper,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 14,
-                    flexShrink: 0,
-                    fontFamily: "'Fraunces', Georgia, serif",
-                  }}
-                >
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: C.paper, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0, fontFamily: "'Fraunces', Georgia, serif" }}>
                   {step.step}
                 </div>
-                <div
-                  style={{
-                    flex: 1,
-                    background: "#fff",
-                    border: `1px solid ${C.mist}`,
-                    borderRadius: 12,
-                    padding: "14px 18px",
-                  }}
-                >
-                  <h3
-                    style={{
-                      fontFamily: "'Fraunces', Georgia, serif",
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: C.ink,
-                      margin: "0 0 4px",
-                    }}
-                  >
-                    {step.title}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: 14, color: C.muted, lineHeight: 1.6 }}>
-                    {step.description}
-                  </p>
+                <div style={{ flex: 1, background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 12, padding: "14px 18px" }}>
+                  <h3 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{step.title}</h3>
+                  <p style={{ margin: 0, fontSize: 14, color: C.muted, lineHeight: 1.6 }}>{step.description}</p>
                 </div>
               </div>
             ))}
           </div>
         </Section>
 
-        {/* Retake */}
-        <div style={{ textAlign: "center", marginTop: 48 }}>
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 48, flexWrap: "wrap" }}>
+          <button
+            onClick={() => navigate(`/roadmap?id=${assessmentId}`)}
+            style={{ padding: "13px 28px", borderRadius: 12, border: "none", background: C.marigold, color: "#fff", fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+            onMouseOver={(e) => (e.currentTarget.style.opacity = "0.88")}
+            onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
+          >
+            Open Roadmap →
+          </button>
           <button
             onClick={handleRetake}
-            style={{
-              padding: "13px 32px",
-              borderRadius: 12,
-              border: `2px solid ${C.ink}`,
-              background: "transparent",
-              color: C.ink,
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 15,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = C.ink;
-              e.currentTarget.style.color = C.paper;
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = C.ink;
-            }}
+            style={{ padding: "13px 28px", borderRadius: 12, border: `2px solid ${C.ink}`, background: "transparent", color: C.ink, fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+            onMouseOver={(e) => { e.currentTarget.style.background = C.ink; e.currentTarget.style.color = C.paper; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.ink; }}
           >
-            Retake Assessment
+            New Assessment
           </button>
         </div>
       </main>
@@ -539,31 +337,16 @@ Return ONLY a valid JSON object, no markdown, no extra text:
   );
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function PageShell({ children }) {
-  return (
-    <div style={{ minHeight: "100vh", background: C.paper }}>
-      <Navbar />
-      {children}
-    </div>
-  );
+  return <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>;
 }
 
 function Section({ label, children }) {
   return (
     <section style={{ marginBottom: 40 }}>
-      <h2
-        style={{
-          fontFamily: "'Fraunces', Georgia, serif",
-          fontSize: 20,
-          fontWeight: 800,
-          color: C.ink,
-          marginBottom: 16,
-        }}
-      >
-        {label}
-      </h2>
+      <h2 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 800, color: C.ink, marginBottom: 16 }}>{label}</h2>
       {children}
     </section>
   );
@@ -574,82 +357,18 @@ function TagRow({ children }) {
 }
 
 function Tag({ children, bg, color }) {
-  return (
-    <span
-      style={{
-        background: bg,
-        color,
-        padding: "8px 14px",
-        borderRadius: 999,
-        fontSize: 13,
-        fontWeight: 600,
-      }}
-    >
-      {children}
-    </span>
-  );
+  return <span style={{ background: bg, color, padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600 }}>{children}</span>;
 }
 
 function StatusCard({ children }) {
-  return (
-    <div
-      style={{
-        textAlign: "center",
-        padding: 48,
-        background: "#fff",
-        borderRadius: 20,
-        border: `1px solid ${C.mist}`,
-        maxWidth: 420,
-        width: "100%",
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <div style={{ textAlign: "center", padding: 48, background: "#fff", borderRadius: 20, border: `1px solid ${C.mist}`, maxWidth: 420, width: "100%" }}>{children}</div>;
 }
 
 function Spinner() {
-  return (
-    <div
-      style={{
-        width: 40,
-        height: 40,
-        border: `4px solid ${C.mist}`,
-        borderTop: `4px solid ${C.marigold}`,
-        borderRadius: "50%",
-        animation: "spin 1s linear infinite",
-        margin: "0 auto 24px",
-      }}
-    />
-  );
+  return <div style={{ width: 40, height: 40, border: `4px solid ${C.mist}`, borderTop: `4px solid ${C.marigold}`, borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 24px" }} />;
 }
 
-const centered = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  minHeight: "80vh",
-  padding: "24px",
-};
-
-const statusTitle = {
-  fontFamily: "'Fraunces', Georgia, serif",
-  fontSize: 20,
-  fontWeight: 700,
-  marginBottom: 12,
-  color: C.ink,
-};
-
+const centered = { display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "24px" };
+const statusTitle = { fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 700, marginBottom: 12, color: C.ink };
 const statusBody = { color: C.muted, fontSize: 14, lineHeight: 1.6 };
-
-const primaryBtn = {
-  padding: "12px 24px",
-  borderRadius: 12,
-  border: "none",
-  background: C.marigold,
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 15,
-  fontWeight: 700,
-  fontFamily: "'Inter', sans-serif",
-};
+const primaryBtn = { padding: "12px 24px", borderRadius: 12, border: "none", background: C.marigold, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 700, fontFamily: "'Inter', sans-serif" };

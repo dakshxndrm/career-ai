@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { RoadmapSchema } from "../schemas";
 
 const C = {
@@ -14,7 +15,6 @@ const C = {
   muted: "#6B6B73",
 };
 
-// Static fallback used when AI call fails
 const STATIC_PHASES = [
   {
     phase: 1,
@@ -69,48 +69,74 @@ function todayStr() {
 
 export default function Roadmap() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const uid = currentUser.uid;
+  const [searchParams] = useSearchParams();
+  const assessmentId = searchParams.get("id");
 
   const [phases, setPhases] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [isStatic, setIsStatic] = useState(false);
+  const [itemTitle, setItemTitle] = useState("");
 
-  // roadmapProgress state
   const [completed, setCompleted] = useState({});
   const [activeDays, setActiveDays] = useState([]);
 
-  // Load saved progress from Firestore
+  // Redirect if no id
   useEffect(() => {
+    if (!assessmentId) navigate("/profile", { replace: true });
+  }, [assessmentId, navigate]);
+
+  const itemRef = assessmentId
+    ? doc(db, "assessments", uid, "items", assessmentId)
+    : null;
+
+  const progressRef = assessmentId
+    ? doc(db, "roadmapProgress", uid, "items", assessmentId)
+    : null;
+
+  useEffect(() => {
+    if (!assessmentId || !itemRef || !progressRef) return;
     async function load() {
-      const snap = await getDoc(doc(db, "roadmapProgress", uid));
-      if (snap.exists()) {
-        const data = snap.data();
+      const [progressSnap, itemSnap] = await Promise.all([
+        getDoc(progressRef),
+        getDoc(itemRef),
+      ]);
+      if (progressSnap.exists()) {
+        const data = progressSnap.data();
         setCompleted(data.completed || {});
         setActiveDays(data.activeDays || []);
       }
-      // Also try to load cached AI roadmap
-      const assessSnap = await getDoc(doc(db, "assessments", uid));
-      if (assessSnap.exists() && assessSnap.data().roadmapPhases) {
-        setPhases(assessSnap.data().roadmapPhases);
-        setIsStatic(false);
+      if (itemSnap.exists()) {
+        const data = itemSnap.data();
+        setItemTitle(data.title || "");
+        if (data.roadmap && Array.isArray(data.roadmap) && data.roadmap.length > 0) {
+          setPhases(data.roadmap);
+          setIsStatic(false);
+        } else {
+          setPhases(STATIC_PHASES);
+          setIsStatic(true);
+        }
       } else {
         setPhases(STATIC_PHASES);
         setIsStatic(true);
       }
     }
     load();
-  }, [uid]);
+  }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateRoadmap = useCallback(async () => {
+    if (!itemRef) return;
     setAiLoading(true);
     setAiError("");
     try {
-      const assessSnap = await getDoc(doc(db, "assessments", uid));
-      const result = assessSnap.exists() ? assessSnap.data().result : null;
-      const topCareers = result?.topCareers?.map((c) => c.title).join(", ") || "undecided career";
+      const itemSnap = await getDoc(itemRef);
+      const itemData = itemSnap.exists() ? itemSnap.data() : {};
+      const result = itemData.result;
+      const topCareers = result?.topCareers?.map((c) => c.title).join(", ") || itemData.title || "undecided career";
 
-      const prompt = `You are a career coach. Generate a personalized learning roadmap for someone whose top career matches are: ${topCareers}.
+      const prompt = `You are a career coach. Generate a personalised learning roadmap for someone whose top career matches are: ${topCareers}.
 
 Return ONLY valid JSON, no markdown, no extra text:
 {
@@ -118,7 +144,7 @@ Return ONLY valid JSON, no markdown, no extra text:
     {
       "phase": 1,
       "title": "Phase title",
-      "blurb": "2-sentence description of this phase",
+      "blurb": "2-sentence description",
       "weeks": "Weeks 1–4",
       "skills": [
         { "id": "unique-slug-1", "label": "Skill Name" },
@@ -131,15 +157,12 @@ Return ONLY valid JSON, no markdown, no extra text:
     }
   ]
 }
-Generate 4 phases covering foundations, skill building, real-world experience, and career launch. Make skills and courses specific to ${topCareers}.`;
+Generate 4 phases. Make skills and courses specific to ${topCareers}.`;
 
       const idToken = await auth.currentUser.getIdToken();
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ prompt }),
       });
 
@@ -181,14 +204,9 @@ Generate 4 phases covering foundations, skill building, real-world experience, a
         return;
       }
 
-      const validated = validation.data;
-      await setDoc(
-        doc(db, "assessments", uid),
-        { roadmapPhases: validated.phases },
-        { merge: true }
-      );
-
-      setPhases(validated.phases);
+      const validatedPhases = validation.data.phases;
+      await setDoc(itemRef, { roadmap: validatedPhases, updatedAt: serverTimestamp() }, { merge: true });
+      setPhases(validatedPhases);
       setIsStatic(false);
     } catch (err) {
       console.error("Roadmap generate error:", err);
@@ -198,25 +216,18 @@ Generate 4 phases covering foundations, skill building, real-world experience, a
     } finally {
       setAiLoading(false);
     }
-  }, [uid]);
+  }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = async (skillId) => {
+    if (!progressRef) return;
     const next = { ...completed, [skillId]: !completed[skillId] };
     setCompleted(next);
-
-    // Record today as an active day (dedupe)
     const today = todayStr();
     const nextDays = activeDays.includes(today) ? activeDays : [...activeDays, today];
     setActiveDays(nextDays);
-
-    await setDoc(
-      doc(db, "roadmapProgress", uid),
-      { completed: next, activeDays: nextDays },
-      { merge: true }
-    );
+    await setDoc(progressRef, { completed: next, activeDays: nextDays }, { merge: true });
   };
 
-  // Streak computation
   function computeStreak(days) {
     if (!days.length) return 0;
     const sorted = [...days].sort().reverse();
@@ -235,173 +246,93 @@ Generate 4 phases covering foundations, skill building, real-world experience, a
   }
 
   function computeWeekCount(days) {
-    const now = new Date();
-    const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     return days.filter((d) => d >= weekAgo).length;
   }
 
   const streak = computeStreak(activeDays);
   const weekCount = computeWeekCount(activeDays);
-
-  const totalSkills = phases
-    ? phases.flatMap((p) => p.skills).length
-    : 0;
+  const totalSkills = phases ? phases.flatMap((p) => p.skills).length : 0;
   const completedCount = Object.values(completed).filter(Boolean).length;
   const progress = totalSkills ? Math.round((completedCount / totalSkills) * 100) : 0;
 
   if (!phases) {
     return (
       <PageShell>
-        <main style={centeredStyle}>
-          <Spinner />
-        </main>
+        <main style={centeredStyle}><Spinner /></main>
       </PageShell>
     );
   }
 
   return (
     <PageShell>
-      <main
-        style={{
-          padding: "56px clamp(20px, 6vw, 72px) 80px",
-          maxWidth: 860,
-          margin: "0 auto",
-          fontFamily: "'Inter', sans-serif",
-          color: C.ink,
-        }}
-      >
+      <main style={{ padding: "56px clamp(20px, 6vw, 72px) 80px", maxWidth: 860, margin: "0 auto", fontFamily: "'Inter', sans-serif", color: C.ink }}>
         {/* Header */}
-        <div style={{ marginBottom: 36 }}>
+        <div style={{ marginBottom: 8 }}>
           <p style={eyebrow}>Your Learning Path</p>
           <h1 style={h1Style}>Career Roadmap</h1>
-          <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.65, marginTop: 8 }}>
-            Track your skills and courses phase by phase.
-          </p>
+          {itemTitle && (
+            <p style={{ color: C.muted, fontSize: 14, marginTop: 6 }}>
+              Assessment: <strong style={{ color: C.ink }}>{itemTitle}</strong>
+            </p>
+          )}
         </div>
 
-        {/* Streak + week badges */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
+        {/* Back link */}
+        <button
+          onClick={() => navigate(`/results?id=${assessmentId}`)}
+          style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, fontWeight: 600, padding: "0 0 24px", fontFamily: "'Inter', sans-serif" }}
+        >
+          ← Back to report
+        </button>
+
+        {/* Streak badges */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
           <Badge emoji="🔥" text={`${streak}-day streak`} color={C.marigold} />
           <Badge emoji="📅" text={`${weekCount} skill${weekCount !== 1 ? "s" : ""} this week`} color={C.sage} />
           <Badge emoji="✅" text={`${completedCount}/${totalSkills} skills done`} color={C.ink} />
         </div>
 
-        {/* Overall progress bar */}
-        <div
-          style={{
-            background: "#fff",
-            border: `1px solid ${C.mist}`,
-            borderRadius: 14,
-            padding: "16px 20px",
-            marginBottom: 32,
-          }}
-        >
+        {/* Progress bar */}
+        <div style={{ background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 14, padding: "16px 20px", marginBottom: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Overall progress</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: C.marigold }}>{progress}%</span>
           </div>
-          <div
-            style={{
-              height: 8,
-              background: C.mist,
-              borderRadius: 999,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${progress}%`,
-                background: C.marigold,
-                borderRadius: 999,
-                transition: "width 0.4s ease",
-              }}
-            />
+          <div style={{ height: 8, background: C.mist, borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: C.marigold, borderRadius: 999, transition: "width 0.4s ease" }} />
           </div>
         </div>
 
-        {/* AI error / fallback notice */}
+        {/* AI error banner */}
         {aiError && (
-          <div
-            style={{
-              background: `${C.marigold}12`,
-              border: `1px solid ${C.marigold}44`,
-              borderRadius: 12,
-              padding: "12px 16px",
-              marginBottom: 24,
-              fontSize: 13,
-              color: C.ink,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
+          <div style={{ background: `${C.marigold}12`, border: `1px solid ${C.marigold}44`, borderRadius: 12, padding: "12px 16px", marginBottom: 24, fontSize: 13, color: C.ink, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <span>{aiError}</span>
-            <button
-              onClick={generateRoadmap}
-              style={{
-                background: C.marigold,
-                border: "none",
-                color: "#fff",
-                fontSize: 12,
-                fontWeight: 700,
-                padding: "6px 14px",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontFamily: "'Inter', sans-serif",
-                whiteSpace: "nowrap",
-              }}
-            >
+            <button onClick={generateRoadmap} style={{ background: C.marigold, border: "none", color: "#fff", fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "'Inter', sans-serif", whiteSpace: "nowrap" }}>
               Retry
             </button>
           </div>
         )}
 
-        {/* Generate button (shown when on static fallback) */}
+        {/* Generate button */}
         {isStatic && !aiLoading && !aiError && (
           <div style={{ marginBottom: 28 }}>
             <button
               onClick={generateRoadmap}
-              style={{
-                padding: "13px 28px",
-                borderRadius: 12,
-                border: "none",
-                background: C.marigold,
-                color: "#fff",
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
+              style={{ padding: "13px 28px", borderRadius: 12, border: "none", background: C.marigold, color: "#fff", fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
               onMouseOver={(e) => (e.currentTarget.style.opacity = "0.88")}
               onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
             >
               Generate my roadmap →
             </button>
-            <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
-              Uses your career assessment results to build a personalised path.
-            </p>
+            <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Uses your career report to build a personalised path.</p>
           </div>
         )}
 
         {aiLoading && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 28,
-              padding: "16px 20px",
-              background: "#fff",
-              border: `1px solid ${C.mist}`,
-              borderRadius: 14,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, padding: "16px 20px", background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 14 }}>
             <Spinner small />
-            <span style={{ fontSize: 14, color: C.muted }}>
-              Building your personalised roadmap…
-            </span>
+            <span style={{ fontSize: 14, color: C.muted }}>Building your personalised roadmap…</span>
           </div>
         )}
 
@@ -409,162 +340,51 @@ Generate 4 phases covering foundations, skill building, real-world experience, a
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {phases.map((ph) => {
             const phaseCompleted = ph.skills.filter((s) => completed[s.id]).length;
-            const phaseTotal = ph.skills.length;
             return (
-              <div
-                key={ph.phase}
-                style={{
-                  background: "#fff",
-                  border: `1px solid ${C.mist}`,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                }}
-              >
-                {/* Phase header */}
-                <div
-                  style={{
-                    padding: "20px 24px 16px",
-                    borderBottom: `1px solid ${C.mist}`,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: 12,
-                  }}
-                >
+              <div key={ph.phase} style={{ background: "#fff", border: `1px solid ${C.mist}`, borderRadius: 18, overflow: "hidden" }}>
+                <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.mist}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                      <span
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: "50%",
-                          background: C.ink,
-                          color: C.paper,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                          fontWeight: 800,
-                          fontFamily: "'Fraunces', Georgia, serif",
-                          flexShrink: 0,
-                        }}
-                      >
+                      <span style={{ width: 28, height: 28, borderRadius: "50%", background: C.ink, color: C.paper, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, fontFamily: "'Fraunces', Georgia, serif", flexShrink: 0 }}>
                         {ph.phase}
                       </span>
-                      <h2
-                        style={{
-                          fontFamily: "'Fraunces', Georgia, serif",
-                          fontSize: 18,
-                          fontWeight: 800,
-                          color: C.ink,
-                          margin: 0,
-                        }}
-                      >
-                        {ph.title}
-                      </h2>
+                      <h2 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, fontWeight: 800, color: C.ink, margin: 0 }}>{ph.title}</h2>
                     </div>
-                    <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.55 }}>
-                      {ph.blurb}
-                    </p>
+                    <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.55 }}>{ph.blurb}</p>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: "0.07em",
-                        textTransform: "uppercase",
-                        color: C.sage,
-                        background: `${C.sage}14`,
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sage, background: `${C.sage}14`, padding: "4px 10px", borderRadius: 6, display: "block", marginBottom: 4 }}>
                       {ph.weeks}
                     </span>
-                    <span style={{ fontSize: 12, color: C.muted }}>
-                      {phaseCompleted}/{phaseTotal} skills
-                    </span>
+                    <span style={{ fontSize: 12, color: C.muted }}>{phaseCompleted}/{ph.skills.length} skills</span>
                   </div>
                 </div>
 
                 <div style={{ padding: "16px 24px 20px" }}>
-                  {/* Skills */}
                   <p style={sectionLabel}>Skills</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                     {ph.skills.map((skill) => (
                       <label
                         key={skill.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 7,
-                          padding: "7px 14px",
-                          borderRadius: 999,
-                          border: `1.5px solid ${completed[skill.id] ? C.sage : C.mist}`,
-                          background: completed[skill.id] ? `${C.sage}12` : C.paper,
-                          cursor: "pointer",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: completed[skill.id] ? C.sage : C.ink,
-                          transition: "all .15s",
-                          userSelect: "none",
-                        }}
+                        style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 999, border: `1.5px solid ${completed[skill.id] ? C.sage : C.mist}`, background: completed[skill.id] ? `${C.sage}12` : C.paper, cursor: "pointer", fontSize: 13, fontWeight: 600, color: completed[skill.id] ? C.sage : C.ink, transition: "all .15s", userSelect: "none" }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={!!completed[skill.id]}
-                          onChange={() => handleToggle(skill.id)}
-                          style={{ accentColor: C.sage, width: 14, height: 14 }}
-                        />
+                        <input type="checkbox" checked={!!completed[skill.id]} onChange={() => handleToggle(skill.id)} style={{ accentColor: C.sage, width: 14, height: 14 }} />
                         {skill.label}
                       </label>
                     ))}
                   </div>
 
-                  {/* Courses */}
                   <p style={sectionLabel}>Recommended Courses</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {ph.courses.map((course, ci) => (
-                      <a
-                        key={ci}
-                        href={course.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: "10px 14px",
-                          borderRadius: 10,
-                          border: `1px solid ${C.mist}`,
-                          textDecoration: "none",
-                          background: C.paper,
-                          gap: 8,
-                        }}
-                        onMouseOver={(e) =>
-                          (e.currentTarget.style.borderColor = C.marigold)
-                        }
-                        onMouseOut={(e) =>
-                          (e.currentTarget.style.borderColor = C.mist)
-                        }
+                      <a key={ci} href={course.url} target="_blank" rel="noopener noreferrer"
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.mist}`, textDecoration: "none", background: C.paper, gap: 8 }}
+                        onMouseOver={(e) => (e.currentTarget.style.borderColor = C.marigold)}
+                        onMouseOut={(e) => (e.currentTarget.style.borderColor = C.mist)}
                       >
                         <div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: C.ink,
-                              marginBottom: 2,
-                            }}
-                          >
-                            {course.title}
-                          </div>
-                          <div style={{ fontSize: 12, color: C.muted }}>
-                            {course.provider}
-                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 2 }}>{course.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{course.provider}</div>
                         </div>
                         <span style={{ color: C.marigold, fontSize: 14, flexShrink: 0 }}>→</span>
                       </a>
@@ -583,30 +403,12 @@ Generate 4 phases covering foundations, skill building, real-world experience, a
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function PageShell({ children }) {
-  return (
-    <div style={{ minHeight: "100vh", background: C.paper }}>
-      <Navbar />
-      {children}
-    </div>
-  );
+  return <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>;
 }
 
 function Badge({ emoji, text, color }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: "6px 14px",
-        borderRadius: 999,
-        background: `${color}14`,
-        color,
-        fontSize: 13,
-        fontWeight: 700,
-        border: `1px solid ${color}30`,
-      }}
-    >
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 999, background: `${color}14`, color, fontSize: 13, fontWeight: 700, border: `1px solid ${color}30` }}>
       {emoji} {text}
     </span>
   );
@@ -614,52 +416,10 @@ function Badge({ emoji, text, color }) {
 
 function Spinner({ small }) {
   const size = small ? 20 : 36;
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        border: `3px solid ${C.mist}`,
-        borderTop: `3px solid ${C.marigold}`,
-        borderRadius: "50%",
-        animation: "spin 1s linear infinite",
-        flexShrink: 0,
-      }}
-    />
-  );
+  return <div style={{ width: size, height: size, border: `3px solid ${C.mist}`, borderTop: `3px solid ${C.marigold}`, borderRadius: "50%", animation: "spin 1s linear infinite", flexShrink: 0 }} />;
 }
 
-const centeredStyle = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  minHeight: "60vh",
-};
-
-const eyebrow = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: C.sage,
-  marginBottom: 10,
-  margin: 0,
-};
-
-const h1Style = {
-  fontFamily: "'Fraunces', Georgia, serif",
-  fontSize: "clamp(28px, 5vw, 38px)",
-  fontWeight: 900,
-  color: C.ink,
-  margin: "8px 0 0",
-  lineHeight: 1.1,
-};
-
-const sectionLabel = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.10em",
-  textTransform: "uppercase",
-  color: C.muted,
-  margin: "0 0 8px",
-};
+const centeredStyle = { display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" };
+const eyebrow = { fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.sage, margin: 0 };
+const h1Style = { fontFamily: "'Fraunces', Georgia, serif", fontSize: "clamp(28px, 5vw, 38px)", fontWeight: 900, color: C.ink, margin: "8px 0 0", lineHeight: 1.1 };
+const sectionLabel = { fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: C.muted, margin: "0 0 8px" };
