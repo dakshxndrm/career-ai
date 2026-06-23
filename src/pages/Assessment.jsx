@@ -1,19 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
+import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { QuestionsSchema } from "../schemas";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C, font } from "../theme";
 
 const LETTERS = ["A", "B", "C", "D"];
 
@@ -548,10 +541,12 @@ function OptionBadge({ label, active }) {
 
 function PageShell({ children }) {
   return (
-    <div style={{ minHeight: "100vh", background: C.paper, fontFamily: "'Inter', sans-serif", color: C.ink }}>
-      <Navbar />
-      {children}
-    </div>
+    <PageTransition>
+      <div style={{ minHeight: "100vh", background: C.paper, fontFamily: font.body, color: C.ink }}>
+        <Navbar />
+        {children}
+      </div>
+    </PageTransition>
   );
 }
 

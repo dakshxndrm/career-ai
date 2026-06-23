@@ -8,6 +8,8 @@ import QuizInstructions from "./pages/QuizInstructions";
 import Assessment from "./pages/Assessment";
 import Results from "./pages/Results";
 import Roadmap from "./pages/Roadmap";
+import Plans from "./pages/Plans";
+import Resources from "./pages/Resources";
 import PublicProfile from "./pages/PublicProfile";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
@@ -51,7 +53,9 @@ function App() {
             </ProtectedRoute>
           } />
 
-          <Route path="/dashboard" element={<ProtectedRoute><DashboardPrivate /></ProtectedRoute>} />
+          <Route path="/dashboard"  element={<ProtectedRoute><DashboardPrivate /></ProtectedRoute>} />
+          <Route path="/plans"      element={<ProtectedRoute><Plans /></ProtectedRoute>} />
+          <Route path="/resources"  element={<ProtectedRoute><Resources /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

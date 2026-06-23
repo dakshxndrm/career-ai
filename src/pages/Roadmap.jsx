@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
+import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
@@ -403,7 +404,11 @@ Generate 4 phases. Make skills and courses specific to ${topCareers}.`;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function PageShell({ children }) {
-  return <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>;
+  return (
+    <PageTransition>
+      <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>
+    </PageTransition>
+  );
 }
 
 function Badge({ emoji, text, color }) {

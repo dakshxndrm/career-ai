@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
+import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
@@ -340,7 +341,11 @@ Return ONLY a valid JSON object, no markdown, no extra text:
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function PageShell({ children }) {
-  return <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>;
+  return (
+    <PageTransition>
+      <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>
+    </PageTransition>
+  );
 }
 
 function Section({ label, children }) {

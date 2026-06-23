@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
+import PageTransition from "../components/PageTransition";
 import { useParams, Link } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -294,10 +295,12 @@ export default function PublicProfile() {
 
 function PageShell({ children }) {
   return (
-    <div style={{ minHeight: "100vh", background: C.paper }}>
-      <Navbar />
-      {children}
-    </div>
+    <PageTransition>
+      <div style={{ minHeight: "100vh", background: C.paper }}>
+        <Navbar />
+        {children}
+      </div>
+    </PageTransition>
   );
 }
 

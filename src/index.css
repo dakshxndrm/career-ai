@@ -5,7 +5,22 @@ body {
   background: #FAF8F3; color: #16161D;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
+
+@keyframes fadeInUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
+@keyframes fadeIn   { from { opacity:0; }                              to { opacity:1; }              }
+@keyframes spin     { to   { transform: rotate(360deg); }                                              }
+
+.page-enter { animation: fadeInUp .45s cubic-bezier(.22,.61,.36,1) both; }
+
+.stagger > * { animation: fadeInUp .5s cubic-bezier(.22,.61,.36,1) both; }
+.stagger > *:nth-child(1) { animation-delay: .04s; }
+.stagger > *:nth-child(2) { animation-delay: .10s; }
+.stagger > *:nth-child(3) { animation-delay: .16s; }
+.stagger > *:nth-child(4) { animation-delay: .22s; }
+.stagger > *:nth-child(5) { animation-delay: .28s; }
+.stagger > *:nth-child(6) { animation-delay: .34s; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .page-enter, .stagger > * { animation: none !important; }
 }
-@keyframes spin { to { transform: rotate(360deg); } }

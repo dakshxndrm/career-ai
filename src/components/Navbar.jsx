@@ -121,10 +121,16 @@ export default function Navbar() {
               Dashboard
             </NavLink>
             <NavLink
-              to="/profile"
+              to="/plans"
               style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
             >
               My Plans
+            </NavLink>
+            <NavLink
+              to="/resources"
+              style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
+            >
+              Resources
             </NavLink>
           </>
         )}

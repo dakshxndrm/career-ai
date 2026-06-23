@@ -2,15 +2,8 @@ import React from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import PageTransition from "../components/PageTransition";
+import { C, font } from "../theme";
 
 // Respect prefers-reduced-motion for hover lifts
 const motionQuery =
@@ -155,15 +148,16 @@ export default function DashboardPublic() {
   const { currentUser } = useAuth();
 
   const handleStartQuiz = () => {
-    navigate(currentUser ? "/profile" : "/login");
+    navigate(currentUser ? "/quiz-instructions" : "/login");
   };
 
   return (
+    <PageTransition>
     <div
       style={{
         background: C.paper,
         minHeight: "100vh",
-        fontFamily: "'Inter', system-ui, sans-serif",
+        fontFamily: font.body,
         color: C.ink,
       }}
     >
@@ -358,6 +352,7 @@ export default function DashboardPublic() {
           <h2 style={sectionH2}>Three steps to clarity.</h2>
 
           <div
+            className="stagger"
             style={{
               display: "flex",
               gap: 20,
@@ -517,9 +512,9 @@ export default function DashboardPublic() {
         {/* Nav links */}
         <nav aria-label="Footer navigation" style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           {[
-            { label: "Home", to: "/" },
+            { label: "Home",      to: "/" },
             { label: "Dashboard", to: "/dashboard" },
-            { label: "Roadmap", to: "/roadmap" },
+            { label: "My Plans",  to: "/plans" },
           ].map(({ label, to }) => (
             <NavLink
               key={to}
@@ -545,6 +540,7 @@ export default function DashboardPublic() {
         </span>
       </footer>
     </div>
+    </PageTransition>
   );
 }
 

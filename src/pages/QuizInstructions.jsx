@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
@@ -75,6 +76,7 @@ export default function QuizInstructions() {
   };
 
   return (
+    <PageTransition>
     <div
       style={{
         minHeight: "100vh",
@@ -291,5 +293,6 @@ export default function QuizInstructions() {
         </button>
       </main>
     </div>
+    </PageTransition>
   );
 }
