@@ -121,10 +121,10 @@ export default function Navbar() {
               Dashboard
             </NavLink>
             <NavLink
-              to="/roadmap"
+              to="/profile"
               style={({ isActive }) => ({ ...linkBase, ...(isActive ? linkActive : {}) })}
             >
-              Roadmap
+              My Plans
             </NavLink>
           </>
         )}
