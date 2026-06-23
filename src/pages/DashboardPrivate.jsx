@@ -67,6 +67,26 @@ export default function DashboardPrivate() {
           const snap = await getDocs(newestQ);
           if (!snap.empty) heroItem = { id: snap.docs[0].id, ...snap.docs[0].data() };
         }
+
+        // Legacy fallback: check old single-doc at assessments/{uid}
+        if (!heroItem) {
+          const legacySnap = await getDoc(doc(db, "assessments", uid));
+          if (legacySnap.exists()) {
+            const d = legacySnap.data();
+            if (d.title || d.result) {
+              heroItem = {
+                id: "legacy",
+                title: d.title || "My first assessment",
+                goal: d.goal || "career",
+                result: d.result || null,
+                roadmap: d.roadmap || null,
+                isLegacy: true,
+              };
+              setTotalCount(1);
+            }
+          }
+        }
+
         setCurrent(heroItem);
 
         // Load roadmap progress for hero item

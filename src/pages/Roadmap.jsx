@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { RoadmapSchema } from "../schemas";
+import { computeStreak, computeWeekCount } from "../utils/roadmapUtils";
 
 const C = {
   ink: "#16161D",
@@ -90,7 +91,9 @@ export default function Roadmap() {
   }, [assessmentId, navigate]);
 
   const itemRef = assessmentId
-    ? doc(db, "assessments", uid, "items", assessmentId)
+    ? assessmentId === "legacy"
+      ? doc(db, "assessments", uid)
+      : doc(db, "assessments", uid, "items", assessmentId)
     : null;
 
   const progressRef = assessmentId
@@ -237,28 +240,6 @@ Generate 4 phases. Make skills and courses specific to ${topCareers}.`;
     setActiveDays(nextDays);
     await setDoc(progressRef, { completed: next, activeDays: nextDays }, { merge: true });
   };
-
-  function computeStreak(days) {
-    if (!days.length) return 0;
-    const sorted = [...days].sort().reverse();
-    const today = todayStr();
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    if (sorted[0] !== today && sorted[0] !== yesterday) return 0;
-    let streak = 1;
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = new Date(sorted[i - 1]);
-      const curr = new Date(sorted[i]);
-      const diff = (prev - curr) / 86400000;
-      if (diff === 1) streak++;
-      else break;
-    }
-    return streak;
-  }
-
-  function computeWeekCount(days) {
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    return days.filter((d) => d >= weekAgo).length;
-  }
 
   const streak = computeStreak(activeDays);
   const weekCount = computeWeekCount(activeDays);

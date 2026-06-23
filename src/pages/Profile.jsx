@@ -90,7 +90,28 @@ export default function Profile() {
         const snap = await getDocs(
           query(collection(db, "assessments", uid, "items"), orderBy("createdAt", "desc"))
         );
-        setAssessments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        let items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // Legacy fallback: check old single-doc at assessments/{uid}
+        if (items.length === 0) {
+          const legacySnap = await getDoc(doc(db, "assessments", uid));
+          if (legacySnap.exists()) {
+            const d = legacySnap.data();
+            if (d.title || d.result) {
+              items = [{
+                id: "legacy",
+                title: d.title || "My first assessment",
+                goal: d.goal || "career",
+                result: d.result || null,
+                roadmap: d.roadmap || null,
+                createdAt: d.createdAt || null,
+                isLegacy: true,
+              }];
+            }
+          }
+        }
+
+        setAssessments(items);
       } catch (err) {
         console.error("Profile: failed to load assessments:", err);
       } finally {
@@ -345,6 +366,9 @@ export default function Profile() {
                             {item.title || "Untitled Assessment"}
                           </h3>
                           <GoalBadge goal={item.goal} />
+                          {item.isLegacy && (
+                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", background: C.muted, color: "#fff", padding: "3px 8px", borderRadius: 4 }}>Legacy</span>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
                           <span style={{ fontSize: 12, color: C.muted }}>{formatDate(item.createdAt)}</span>
@@ -361,13 +385,17 @@ export default function Profile() {
                       <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                         {item.result ? (
                           <ActionBtn onClick={() => navigate(`/results?id=${item.id}`)}>View Report</ActionBtn>
-                        ) : (
+                        ) : !item.isLegacy ? (
                           <ActionBtn onClick={() => navigate(`/assessment?id=${item.id}`)}>Continue →</ActionBtn>
-                        )}
+                        ) : null}
                         {item.result && (
                           <ActionBtn onClick={() => navigate(`/roadmap?id=${item.id}`)}>Roadmap</ActionBtn>
                         )}
-                        {confirmDelete === item.id ? (
+                        {item.isLegacy ? (
+                          <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+                            Take a new assessment to replace this.
+                          </p>
+                        ) : confirmDelete === item.id ? (
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ fontSize: 12, color: C.muted }}>Delete?</span>
                             <button onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}

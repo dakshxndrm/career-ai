@@ -28,14 +28,26 @@ export default function Results() {
   const [errorMessage, setErrorMessage] = useState("");
   const [savedCareers, setSavedCareers] = useState([]);
   const [itemTitle, setItemTitle] = useState("");
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+
+  const RESULT_MSGS = ["Reading your answers…", "Matching career paths…", "Writing your plan…"];
+
+  useEffect(() => {
+    if (!loading) return;
+    const id = setInterval(() => setLoadingMsgIdx((i) => (i + 1) % RESULT_MSGS.length), 3000);
+    return () => clearInterval(id);
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redirect if no id
   useEffect(() => {
     if (!assessmentId) navigate("/profile", { replace: true });
   }, [assessmentId, navigate]);
 
+  // Legacy assessments live at assessments/{uid} (old single-doc format)
   const itemRef = assessmentId
-    ? doc(db, "assessments", currentUser.uid, "items", assessmentId)
+    ? assessmentId === "legacy"
+      ? doc(db, "assessments", currentUser.uid)
+      : doc(db, "assessments", currentUser.uid, "items", assessmentId)
     : null;
 
   // Load savedCareers
@@ -177,7 +189,9 @@ Return ONLY a valid JSON object, no markdown, no extra text:
       }
 
       const validated = validation.data;
-      await setDoc(itemRef, { result: validated, updatedAt: serverTimestamp() }, { merge: true });
+      if (assessmentId !== "legacy") {
+        await setDoc(itemRef, { result: validated, updatedAt: serverTimestamp() }, { merge: true });
+      }
       setResult(validated);
       setLoading(false);
     } catch (err) {
@@ -209,8 +223,11 @@ Return ONLY a valid JSON object, no markdown, no extra text:
         <main style={centered}>
           <StatusCard>
             <Spinner />
-            <h2 style={statusTitle}>Analysing your responses…</h2>
-            <p style={statusBody}>The AI is building your personalised career report. This takes about 15 seconds.</p>
+            <h2 style={statusTitle}>Generating your report…</h2>
+            <p style={statusBody}>{RESULT_MSGS[loadingMsgIdx]}</p>
+            <p style={{ ...statusBody, fontSize: 13, color: C.muted, marginTop: 8 }}>
+              This usually takes 15–30 seconds.
+            </p>
           </StatusCard>
         </main>
       </PageShell>
@@ -219,27 +236,34 @@ Return ONLY a valid JSON object, no markdown, no extra text:
 
   // ── Error ─────────────────────────────────────────────────────────────────
   if (errorKind) {
-    const isParseError = errorKind === "parse";
+    const isRateLimit = errorKind === "rate_limit";
     return (
       <PageShell>
         <main style={centered}>
           <StatusCard>
-            <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${C.marigold}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, margin: "0 auto 20px" }} aria-hidden="true">
-              {isParseError ? "🗺" : "⚠"}
+            <div
+              aria-hidden="true"
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: isRateLimit ? `${C.sage}18` : `${C.marigold}18`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 22,
+                margin: "0 auto 20px",
+              }}
+            >
+              {isRateLimit ? "⏱" : "⚠"}
             </div>
             <h2 style={{ ...statusTitle, marginBottom: 8 }}>
-              {isParseError ? "Couldn't generate your report" : "Something went wrong"}
+              {isRateLimit ? "Limit reached" : "Something went wrong"}
             </h2>
             <p style={{ ...statusBody, marginBottom: 24 }}>{errorMessage}</p>
-            {isParseError ? (
-              <button onClick={handleRegenerate} style={primaryBtn}>Regenerate Report</button>
-            ) : (
-              <button
-                onClick={errorKind === "rate_limit" ? undefined : generateResult}
-                disabled={errorKind === "rate_limit"}
-                style={{ ...primaryBtn, ...(errorKind === "rate_limit" ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
-              >
-                Try Again
+            {!isRateLimit && (
+              <button onClick={generateResult} style={primaryBtn}>
+                Try again
               </button>
             )}
           </StatusCard>

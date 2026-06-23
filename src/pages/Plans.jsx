@@ -29,7 +29,28 @@ export default function Plans() {
         const snap = await getDocs(
           query(collection(db, "assessments", uid, "items"), orderBy("createdAt", "desc"))
         );
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // Legacy fallback: check old single-doc at assessments/{uid}
+        if (list.length === 0) {
+          const legacySnap = await getDoc(doc(db, "assessments", uid));
+          if (legacySnap.exists()) {
+            const d = legacySnap.data();
+            if (d.title || d.result) {
+              list = [{
+                id: "legacy",
+                title: d.title || "My first assessment",
+                goal: d.goal || "career",
+                objective: d.objective || "",
+                result: d.result || null,
+                roadmap: d.roadmap || null,
+                createdAt: d.createdAt || null,
+                updatedAt: d.updatedAt || null,
+                isLegacy: true,
+              }];
+            }
+          }
+        }
 
         // Load roadmap progress for each in parallel
         const progResults = await Promise.all(
@@ -124,6 +145,9 @@ export default function Plans() {
                               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", background: C.marigold, color: "#fff", padding: "3px 8px", borderRadius: 4 }}>Active</span>
                             )}
                             <GoalBadge goal={item.goal} />
+                          {item.isLegacy && (
+                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", background: C.muted, color: "#fff", padding: "3px 8px", borderRadius: 4 }}>Legacy</span>
+                          )}
                           </div>
                           <h2 style={{ fontFamily: font.display, fontSize: 18, fontWeight: 800, color: C.ink, margin: "0 0 4px" }}>
                             {item.title || "Untitled"}
@@ -144,6 +168,7 @@ export default function Plans() {
 
                         {/* Action buttons */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, alignItems: "flex-end" }}>
+                          {!item.isLegacy && (
                           <button
                             onClick={() => handleSetPath(item.id)}
                             disabled={isCurrent || settingId === item.id}
@@ -158,6 +183,7 @@ export default function Plans() {
                           >
                             {settingId === item.id ? "Setting…" : isCurrent ? "✓ Current path" : "Set as current path"}
                           </button>
+                          )}
                           <div style={{ display: "flex", gap: 8 }}>
                             {item.result && (
                               <SmallBtn onClick={() => navigate(`/results?id=${item.id}`)}>View Report</SmallBtn>
@@ -165,10 +191,15 @@ export default function Plans() {
                             {item.result && (
                               <SmallBtn onClick={() => navigate(`/roadmap?id=${item.id}`)}>Open Roadmap</SmallBtn>
                             )}
-                            {!item.result && (
+                            {!item.result && !item.isLegacy && (
                               <SmallBtn onClick={() => navigate(`/assessment?id=${item.id}`)}>Continue →</SmallBtn>
                             )}
                           </div>
+                          {item.isLegacy && (
+                            <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0", textAlign: "right", lineHeight: 1.5 }}>
+                              Take a new assessment to replace this legacy entry.
+                            </p>
+                          )}
                         </div>
                       </div>
 

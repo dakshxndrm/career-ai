@@ -25,6 +25,15 @@ export default function Assessment() {
   const [itemTitle, setItemTitle] = useState("");
   const [otherActive, setOtherActive] = useState(false);
   const [otherDraft, setOtherDraft] = useState("");
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+
+  const QUIZ_MSGS = ["Analysing your goal…", "Crafting personalised questions…", "Almost ready…"];
+
+  useEffect(() => {
+    if (!loadingQuestions) return;
+    const id = setInterval(() => setLoadingMsgIdx((i) => (i + 1) % QUIZ_MSGS.length), 3000);
+    return () => clearInterval(id);
+  }, [loadingQuestions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redirect to profile if no id param
   useEffect(() => {
@@ -320,9 +329,10 @@ Format:
         <main style={centered}>
           <StatusCard>
             <Spinner />
-            <h2 style={statusTitle}>Personalising your assessment…</h2>
-            <p style={statusBody}>
-              The AI is crafting questions specifically for your profile. This takes about 10–20 seconds.
+            <h2 style={statusTitle}>Building your quiz…</h2>
+            <p style={statusBody}>{QUIZ_MSGS[loadingMsgIdx]}</p>
+            <p style={{ ...statusBody, fontSize: 13, color: C.muted, marginTop: 8 }}>
+              This usually takes 10–20 seconds.
             </p>
           </StatusCard>
         </main>
@@ -332,7 +342,6 @@ Format:
 
   // ── Error ─────────────────────────────────────────────────────────────────
   if (errorKind) {
-    const isParseError = errorKind === "parse";
     const isRateLimit = errorKind === "rate_limit";
     return (
       <PageShell>
@@ -344,7 +353,7 @@ Format:
                 width: 48,
                 height: 48,
                 borderRadius: "50%",
-                background: `${C.marigold}18`,
+                background: isRateLimit ? `${C.sage}18` : `${C.marigold}18`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -352,23 +361,15 @@ Format:
                 margin: "0 auto 20px",
               }}
             >
-              {isParseError ? "🗺" : "⚠"}
+              {isRateLimit ? "⏱" : "⚠"}
             </div>
             <h2 style={{ ...statusTitle, marginBottom: 8 }}>
-              {isParseError ? "Couldn't generate questions" : "Something went wrong"}
+              {isRateLimit ? "Limit reached" : "Something went wrong"}
             </h2>
             <p style={{ ...statusBody, marginBottom: 24 }}>{errorMessage}</p>
-            {isParseError ? (
-              <button onClick={handleRegenerate} style={primaryBtn}>
-                Regenerate Questions
-              </button>
-            ) : (
-              <button
-                onClick={isRateLimit ? undefined : generateQuestions}
-                disabled={isRateLimit}
-                style={{ ...primaryBtn, ...(isRateLimit ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
-              >
-                Try Again
+            {!isRateLimit && (
+              <button onClick={generateQuestions} style={primaryBtn}>
+                Try again
               </button>
             )}
           </StatusCard>
