@@ -255,7 +255,7 @@ export default function Profile() {
                   </div>
 
                   {/* Row: role + location */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 16 }}>
                     <Field id="role" label="Current role / year" form={form} setForm={setForm}
                       type="text" placeholder="e.g. B.Tech CSE, 2nd year"
                       focused={focusedField} setFocused={setFocusedField} />

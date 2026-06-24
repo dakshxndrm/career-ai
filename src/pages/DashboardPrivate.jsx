@@ -134,7 +134,7 @@ export default function DashboardPrivate() {
             <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner /></div>
           ) : totalCount === 0 ? (
             /* ── Empty state ── */
-            <div style={{ background: C.ink, borderRadius: 20, padding: "48px 40px", textAlign: "center", maxWidth: 560, position: "relative", overflow: "hidden" }}>
+            <div style={{ background: C.ink, borderRadius: 20, padding: "clamp(32px, 6vw, 48px) clamp(24px, 5vw, 40px)", textAlign: "center", maxWidth: 560, position: "relative", overflow: "hidden" }}>
               <svg aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} viewBox="0 0 560 280" preserveAspectRatio="xMidYMid slice">
                 {[0,1,2,3].map((i) => <ellipse key={i} cx="280" cy="280" rx={60+i*55} ry={30+i*25} fill="none" stroke={C.paper} strokeWidth=".7" opacity={.06-i*.01} />)}
               </svg>
@@ -156,7 +156,7 @@ export default function DashboardPrivate() {
             <>
               {/* ── Hero: Current Path ── */}
               {current && (
-                <div style={{ background: C.ink, borderRadius: 20, padding: "32px 36px", marginBottom: 28, position: "relative", overflow: "hidden" }}>
+                <div style={{ background: C.ink, borderRadius: 20, padding: "32px clamp(20px, 5vw, 36px)", marginBottom: 28, position: "relative", overflow: "hidden" }}>
                   <svg aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} viewBox="0 0 900 260" preserveAspectRatio="xMidYMid slice">
                     {[0,1,2,3].map((i) => <ellipse key={`a${i}`} cx="820" cy="230" rx={70+i*65} ry={36+i*28} fill="none" stroke={C.paper} strokeWidth=".8" opacity={.06-i*.01} transform="rotate(-12 820 230)" />)}
                     {[0,1,2].map((i) => <ellipse key={`b${i}`} cx="80"  cy="20"  rx={50+i*50} ry={25+i*20} fill="none" stroke={C.paper} strokeWidth=".8" opacity={.05-i*.01} />)}
