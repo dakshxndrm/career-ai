@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestam
 import { db, auth } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ResultSchema } from "../schemas";
+import { sanitizeForPrompt } from "../utils/sanitize";
 
 const C = {
   ink: "#16161D",
@@ -77,8 +78,15 @@ export default function Results() {
       const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
       const itemSnap = await getDoc(itemRef);
 
-      const profile = profileSnap.exists() ? profileSnap.data() : {};
+      const rawProfile = profileSnap.exists() ? profileSnap.data() : {};
       const itemData = itemSnap.exists() ? itemSnap.data() : {};
+
+      const profile = {
+        name: sanitizeForPrompt(rawProfile.name || "", 80),
+        age:  sanitizeForPrompt(rawProfile.age  || "", 20),
+        role: sanitizeForPrompt(rawProfile.role || "", 80),
+      };
+      const safeTitle = sanitizeForPrompt(itemData.title || "", 120);
 
       setItemTitle(itemData.title || "");
 
@@ -90,10 +98,10 @@ export default function Results() {
 
       const questions  = itemData.questions  || [];
       const answers    = itemData.answers    || {};
-      const objective  = itemData.objective  || "";
+      const objective  = sanitizeForPrompt(itemData.objective || "", 300);
 
       const qaSummary = questions
-        .map((q) => `Q: ${q.question}\nA: ${answers[q.id] || "Not answered"}`)
+        .map((q) => `Q: ${q.question}\nA: ${sanitizeForPrompt(answers[q.id] || "Not answered", 600)}`)
         .join("\n\n");
 
       const prompt = `You are an expert career counselor. Based on this user's profile and quiz answers, give a personalized career report.
@@ -102,13 +110,13 @@ User Profile:
 - Name: ${profile.name || "Unknown"}
 - Age: ${profile.age || "Unknown"}
 - Role: ${profile.role || "Unknown"}
-- Assessment title: ${itemData.title || "Unknown"}
+- Assessment title: ${safeTitle || "Unknown"}
 - Goal type: ${itemData.goal === "skill" ? "Learning a specific skill" : "Discovering career paths"}${objective ? `\n- Stated goal: ${objective}` : ""}
 
 Quiz Answers (the FIRST 4–6 are diagnostic questions measuring current knowledge):
 ${qaSummary}
 
-DIAGNOSIS — Based ESPECIALLY on the diagnostic answers (prior exposure, self-rated proficiency, and the knowledge-check questions), judge the user's REAL current level with "${itemData.title || "this topic"}". Set currentLevel to beginner/intermediate/advanced, write levelEvidence citing 1–2 of their specific answers, list knownAreas they already have, and gapAreas (key skills they still need for "${itemData.title || "this topic"}"). Do NOT over-rate beginners.${objective ? `
+DIAGNOSIS — Based ESPECIALLY on the diagnostic answers (prior exposure, self-rated proficiency, and the knowledge-check questions), judge the user's REAL current level with "${safeTitle || "this topic"}". Set currentLevel to beginner/intermediate/advanced, write levelEvidence citing 1–2 of their specific answers, list knownAreas they already have, and gapAreas (key skills they still need for "${safeTitle || "this topic"}"). Do NOT over-rate beginners.${objective ? `
 
 GOAL PLAN — The user's goal is: "${objective}". After assessing their currentLevel and gapAreas, produce goalPlan: restate the goal verbatim, give an honest feasibility read from where they are now, an estimatedTime range (e.g. "4–6 months at ~6 hrs/week"), and 3–6 ordered milestones that bridge their current level (and gapAreas) to this goal. Be encouraging but realistic — do not promise unrealistic timelines.` : ""}
 
@@ -205,12 +213,6 @@ Return ONLY a valid JSON object, no markdown, no extra text:
   useEffect(() => {
     if (assessmentId) generateResult();
   }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRegenerate = async () => {
-    if (!itemRef) return;
-    await setDoc(itemRef, { result: null }, { merge: true });
-    generateResult();
-  };
 
   const handleRetake = () => {
     navigate("/quiz-instructions");

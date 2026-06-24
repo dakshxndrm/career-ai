@@ -1,6 +1,8 @@
-import React, { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import React, { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams, useLocation } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider } from "./context/AuthContext";
 
 const Auth            = lazy(() => import("./pages/Auth"));
@@ -21,6 +23,31 @@ function RequireId({ children }) {
   return children;
 }
 
+// Per-route document titles (SEO). Lighter than react-helmet-async — no dep.
+const ROUTE_TITLES = {
+  "/": "Career Atlas — AI Career Discovery for Students",
+  "/login": "Sign in — Career Atlas",
+  "/profile": "Your Profile — Career Atlas",
+  "/quiz-instructions": "Start an Assessment — Career Atlas",
+  "/assessment": "Your Assessment — Career Atlas",
+  "/results": "Your Career Report — Career Atlas",
+  "/roadmap": "Your Roadmap — Career Atlas",
+  "/dashboard": "Dashboard — Career Atlas",
+  "/plans": "My Plans — Career Atlas",
+  "/resources": "Resources — Career Atlas",
+};
+
+function RouteTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const title =
+      ROUTE_TITLES[pathname] ||
+      (pathname.startsWith("/u/") ? "Profile — Career Atlas" : "Career Atlas");
+    document.title = title;
+  }, [pathname]);
+  return null;
+}
+
 function PageFallback() {
   return (
     <div style={{ minHeight: "100vh", background: "#FAF8F3", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -31,36 +58,56 @@ function PageFallback() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Suspense fallback={<PageFallback />}>
-          <Routes>
-            {/* PUBLIC */}
-            <Route path="/"       element={<DashboardPublic />} />
-            <Route path="/login"  element={<Auth />} />
-            <Route path="/u/:uid" element={<PublicProfile />} />
+    <ErrorBoundary fullScreen>
+      <BrowserRouter>
+        <AuthProvider>
+          <RouteTitle />
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              {/* PUBLIC */}
+              <Route path="/"       element={<DashboardPublic />} />
+              <Route path="/login"  element={<Auth />} />
+              <Route path="/u/:uid" element={<PublicProfile />} />
 
-            {/* PROTECTED */}
-            <Route path="/profile"          element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/quiz-instructions" element={<ProtectedRoute><QuizInstructions /></ProtectedRoute>} />
+              {/* PROTECTED */}
+              <Route path="/profile"          element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/quiz-instructions" element={<ProtectedRoute><QuizInstructions /></ProtectedRoute>} />
 
-            <Route path="/assessment" element={
-              <ProtectedRoute><RequireId><Assessment /></RequireId></ProtectedRoute>
-            } />
-            <Route path="/results" element={
-              <ProtectedRoute><RequireId><Results /></RequireId></ProtectedRoute>
-            } />
-            <Route path="/roadmap" element={
-              <ProtectedRoute><RequireId><Roadmap /></RequireId></ProtectedRoute>
-            } />
+              {/* AI-heavy pages get their own boundary so a failure here
+                  shows a recoverable card instead of taking down the app. */}
+              <Route path="/assessment" element={
+                <ProtectedRoute><RequireId>
+                  <ErrorBoundary
+                    title="The assessment hit a snag"
+                    message="Something went wrong while building or running your quiz. Try again, or reload if it persists."
+                  >
+                    <Assessment />
+                  </ErrorBoundary>
+                </RequireId></ProtectedRoute>
+              } />
+              <Route path="/results" element={
+                <ProtectedRoute><RequireId>
+                  <ErrorBoundary
+                    title="Couldn't render your report"
+                    message="Something went wrong while preparing your results. Try again, or reload if it persists."
+                  >
+                    <Results />
+                  </ErrorBoundary>
+                </RequireId></ProtectedRoute>
+              } />
+              <Route path="/roadmap" element={
+                <ProtectedRoute><RequireId><Roadmap /></RequireId></ProtectedRoute>
+              } />
 
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPrivate /></ProtectedRoute>} />
-            <Route path="/plans"     element={<ProtectedRoute><Plans /></ProtectedRoute>} />
-            <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
-          </Routes>
-        </Suspense>
-      </AuthProvider>
-    </BrowserRouter>
+              <Route path="/dashboard" element={<ProtectedRoute><DashboardPrivate /></ProtectedRoute>} />
+              <Route path="/plans"     element={<ProtectedRoute><Plans /></ProtectedRoute>} />
+              <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
+            </Routes>
+          </Suspense>
+          <Analytics />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

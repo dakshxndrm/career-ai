@@ -237,7 +237,7 @@ export default function Profile() {
                     </button>
                     {photoError && <p style={{ fontSize: 12, color: "#c0392b", margin: "6px 0 0" }}>{photoError}</p>}
                     <p style={{ fontSize: 11, color: C.muted, margin: "4px 0 0" }}>JPEG/PNG, max ~900 KB after resize.</p>
-                    <input ref={photoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoSelect} />
+                    <input ref={photoInputRef} type="file" accept="image/*" aria-label="Upload profile photo" style={{ display: "none" }} onChange={handlePhotoSelect} />
                   </div>
                 </div>
 

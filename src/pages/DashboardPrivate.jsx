@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import {
   collection, query, orderBy, limit, getDocs,
-  doc, getDoc, setDoc,
+  doc, getDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { C, font } from "../theme";

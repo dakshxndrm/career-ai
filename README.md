@@ -1,5 +1,7 @@
 # Career Atlas 🧭
 
+[![CI](https://github.com/dakshxndrm/career-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dakshxndrm/career-ai/actions/workflows/ci.yml)
+
 > AI-powered career discovery for students — adaptive quiz, personalised roadmap, progress tracking.
 
 ## Live Demo

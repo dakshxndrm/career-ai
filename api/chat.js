@@ -23,12 +23,79 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// Per-user rate limit store: uid → { count, windowStart }
-// Module-level — persists within a single function instance.
-// Not distributed across instances; swap for Upstash KV if needed.
-const rateLimitStore = new Map();
+import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const RATE_MAX = 10; // requests per window per user
+const MAX_PROMPT_CHARS = 20000; // hard cap on prompt size
+
+// ── Rate-limit backend ────────────────────────────────────────────────────────
+//
+// In-memory Map is module-level: it survives WITHIN one warm serverless instance
+// but resets on every cold start and is NOT shared across the concurrent
+// instances Vercel may spin up. That makes it ineffective as a real limit in
+// production. When a Firebase service account is configured we use a Firestore
+// sliding-window counter instead, which is durable and shared across instances.
+const rateLimitStore = new Map(); // fallback only
+
+let _db = null;
+function getAdminDb() {
+  if (_db) return _db;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!raw) return null; // not configured → fall back to in-memory
+  try {
+    const creds = JSON.parse(raw);
+    if (!getApps().length) initializeApp({ credential: cert(creds) });
+    _db = getFirestore();
+    return _db;
+  } catch (err) {
+    console.error("firebase-admin init failed; falling back to in-memory limiter:", err.message);
+    return null;
+  }
+}
+
+// Returns { allowed: boolean, resetMins: number }
+async function checkRateLimit(uid) {
+  const now = Date.now();
+  const db = getAdminDb();
+
+  // ── Durable path: Firestore sliding window ──
+  if (db) {
+    const ref = db.collection("rateLimits").doc(uid);
+    try {
+      return await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        let hits = (snap.exists ? snap.data().hits : []) || [];
+        hits = hits.filter((t) => now - t < RATE_WINDOW_MS);
+        if (hits.length >= RATE_MAX) {
+          const resetMins = Math.ceil((hits[0] + RATE_WINDOW_MS - now) / 60_000);
+          return { allowed: false, resetMins };
+        }
+        hits.push(now);
+        tx.set(ref, { hits, updatedAt: FieldValue.serverTimestamp() });
+        return { allowed: true, resetMins: 0 };
+      });
+    } catch (err) {
+      console.error("Firestore rate-limit transaction failed:", err.message);
+      // Fail-open to in-memory rather than blocking all traffic on a Firestore blip.
+    }
+  }
+
+  // ── Fallback path: in-memory (non-distributed) ──
+  const record = rateLimitStore.get(uid) ?? { count: 0, windowStart: now };
+  if (now - record.windowStart >= RATE_WINDOW_MS) {
+    record.count = 0;
+    record.windowStart = now;
+  }
+  if (record.count >= RATE_MAX) {
+    const resetMins = Math.ceil((record.windowStart + RATE_WINDOW_MS - now) / 60_000);
+    return { allowed: false, resetMins };
+  }
+  record.count += 1;
+  rateLimitStore.set(uid, record);
+  return { allowed: true, resetMins: 0 };
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -49,29 +116,22 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Invalid or expired Firebase token" });
   }
 
-  // ── 2. Per-user rate limit ────────────────────────────────────────────────
-  const now = Date.now();
-  const record = rateLimitStore.get(uid) ?? { count: 0, windowStart: now };
-
-  if (now - record.windowStart >= RATE_WINDOW_MS) {
-    record.count = 0;
-    record.windowStart = now;
-  }
-
-  if (record.count >= RATE_MAX) {
-    const resetMins = Math.ceil((record.windowStart + RATE_WINDOW_MS - now) / 60_000);
+  // ── 2. Per-user rate limit (durable when service account is configured) ───
+  const { allowed, resetMins } = await checkRateLimit(uid);
+  if (!allowed) {
     return res.status(429).json({
       error: `Rate limit reached. Try again in ${resetMins} minute(s).`,
+      resetMins,
     });
   }
-
-  record.count += 1;
-  rateLimitStore.set(uid, record);
 
   // ── 3. Validate body ──────────────────────────────────────────────────────
   const { prompt } = req.body ?? {};
   if (!prompt || typeof prompt !== "string") {
     return res.status(400).json({ error: "prompt is required" });
+  }
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    return res.status(413).json({ error: "prompt too large" });
   }
 
   // ── 4. Dispatch to the configured model provider ──────────────────────────

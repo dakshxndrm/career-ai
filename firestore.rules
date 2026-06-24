@@ -10,9 +10,22 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
+    // assessments/{uid} — legacy single-doc (old data model). Owner read-only;
+    // new writes go to the items subcollection below.
+    match /assessments/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // assessments/{uid}/items/{itemId} — owner-only subcollection
     match /assessments/{uid}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // rateLimits/{uid} — written only by the server (firebase-admin bypasses
+    // rules). Clients must never read or write the counter.
+    match /rateLimits/{uid} {
+      allow read, write: if false;
     }
 
     // roadmapProgress/{uid}/items/{assessmentId} — owner-only subcollection

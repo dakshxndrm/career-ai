@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { QuestionsSchema } from "../schemas";
+import { sanitizeForPrompt } from "../utils/sanitize";
 import { C, font } from "../theme";
 
 const LETTERS = ["A", "B", "C", "D"];
@@ -74,12 +75,18 @@ export default function Assessment() {
 
     try {
       const profileSnap = await getDoc(doc(db, "users", currentUser.uid));
-      const profile = profileSnap.exists() ? profileSnap.data() : {};
+      const rawProfile = profileSnap.exists() ? profileSnap.data() : {};
+      const profile = {
+        ...rawProfile,
+        name: sanitizeForPrompt(rawProfile.name || "", 80),
+        age:  sanitizeForPrompt(rawProfile.age  || "", 20),
+        role: sanitizeForPrompt(rawProfile.role || "", 80),
+      };
       const itemSnap = await getDoc(itemRef);
       const itemData = itemSnap.exists() ? itemSnap.data() : {};
       const goal      = itemData.goal      || "career";
-      const title     = itemData.title     || "";
-      const objective = itemData.objective || "";
+      const title     = sanitizeForPrompt(itemData.title     || "", 120);
+      const objective = sanitizeForPrompt(itemData.objective || "", 300);
 
       const goalContext =
         goal === "skill"
@@ -225,7 +232,7 @@ Format:
       setErrorMessage("Something went wrong. Please try again.");
       setLoadingQuestions(false);
     }
-  }, [currentUser.uid, itemRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentUser.uid, itemRef]);
 
   // ── On mount: load from cache or generate ─────────────────────────────────
   useEffect(() => {
@@ -253,12 +260,6 @@ Format:
     };
     loadOrGenerate();
   }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRegenerate = async () => {
-    if (!itemRef) return;
-    await setDoc(itemRef, { questions: [], answers: {}, lastQuestionIndex: 0 }, { merge: true });
-    generateQuestions();
-  };
 
   const saveProgress = async (updatedAnswers, index) => {
     if (!itemRef) return;
