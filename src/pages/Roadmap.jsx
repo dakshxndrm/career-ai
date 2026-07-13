@@ -1,21 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { db } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { RoadmapSchema } from "../schemas";
+import { askModel } from "../utils/api";
 import { computeStreak, computeWeekCount } from "../utils/roadmapUtils";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C } from "../theme";
 
 const STATIC_PHASES = [
   {
@@ -172,52 +164,21 @@ Return ONLY valid JSON, no markdown, no extra text:
 }
 Generate 4 phases. Make skills and courses specific to ${topCareers}.`;
 
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (res.status === 429) {
-        const body = await res.json().catch(() => ({}));
-        setAiError(body.error ?? "Too many requests — try again later.");
-        setAiLoading(false);
+      const r = await askModel(prompt, RoadmapSchema);
+      if (!r.ok) {
+        setAiError(
+          r.kind === "rate_limit"
+            ? r.message ?? "Too many requests — try again later."
+            : r.kind === "network"
+              ? "Server error. Showing default roadmap."
+              : "Couldn't parse AI response. Showing default roadmap."
+        );
         setIsStatic(true);
-        return;
-      }
-      if (!res.ok) {
-        setAiError("Server error. Showing default roadmap.");
-        setAiLoading(false);
-        setIsStatic(true);
+        if (r.kind === "parse") setPhases(STATIC_PHASES);
         return;
       }
 
-      const data = await res.json();
-      const raw = data?.content?.[0]?.text ?? "";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        setAiError("Couldn't parse AI response. Showing default roadmap.");
-        setAiLoading(false);
-        setIsStatic(true);
-        setPhases(STATIC_PHASES);
-        return;
-      }
-
-      const validation = RoadmapSchema.safeParse(parsed);
-      if (!validation.success) {
-        setAiError("AI returned an unexpected shape. Showing default roadmap.");
-        setAiLoading(false);
-        setIsStatic(true);
-        setPhases(STATIC_PHASES);
-        return;
-      }
-
-      const validatedPhases = validation.data.phases;
+      const validatedPhases = r.data.phases;
       await setDoc(itemRef, { roadmap: validatedPhases, updatedAt: serverTimestamp() }, { merge: true });
       setPhases(validatedPhases);
       setIsStatic(false);
@@ -395,9 +356,9 @@ Generate 4 phases. Make skills and courses specific to ${topCareers}.`;
 
 function PageShell({ children }) {
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>
-    </PageTransition>
+    </div>
   );
 }
 

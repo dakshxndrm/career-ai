@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { QuestionsSchema, ResultSchema, AssessmentItemSchema } from "../schemas.js";
+import { QuestionsSchema, ResultSchema } from "../schemas.js";
 
 const minimalResult = {
   summary: "Good match for software engineering.",
@@ -75,19 +75,5 @@ describe("ResultSchema", () => {
       topCareers: [{ title: "Dev", match: 150, reason: "ok" }],
     };
     expect(ResultSchema.safeParse(input).success).toBe(false);
-  });
-});
-
-describe("AssessmentItemSchema", () => {
-  it("defaults objective to empty string when omitted", () => {
-    const input = { id: "abc", title: "My test", goal: "career" };
-    const result = AssessmentItemSchema.safeParse(input);
-    expect(result.success).toBe(true);
-    expect(result.data.objective).toBe("");
-  });
-
-  it("rejects unknown goal values", () => {
-    const input = { id: "abc", title: "Test", goal: "hobby" };
-    expect(AssessmentItemSchema.safeParse(input).success).toBe(false);
   });
 });

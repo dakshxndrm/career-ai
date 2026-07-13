@@ -2,15 +2,7 @@ import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import useMediaQuery from "../hooks/useMediaQuery";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C } from "../theme";
 
 export default function Navbar() {
   const { currentUser, logout } = useAuth();

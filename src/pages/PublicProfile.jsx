@@ -1,18 +1,9 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useParams, Link } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C } from "../theme";
 
 export default function PublicProfile() {
   const { uid } = useParams();
@@ -295,12 +286,12 @@ export default function PublicProfile() {
 
 function PageShell({ children }) {
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper }}>
         <Navbar />
         {children}
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

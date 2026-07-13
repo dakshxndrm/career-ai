@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
@@ -63,7 +62,7 @@ export default function Resources() {
     : filtered;
 
   return (
-    <PageTransition>
+    <div className="page-enter">
       <style>{`
         .res-input { width:100%; padding:11px 14px; border-radius:10px; border:1.5px solid ${C.mist}; background:${C.paper}; color:${C.ink}; font-size:15px; font-family:${font.body}; outline:none; box-sizing:border-box; transition:border-color .15s; }
         .res-input:focus { border-color:${C.marigold}; }
@@ -175,7 +174,7 @@ export default function Resources() {
           )}
         </main>
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { db } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { QuestionsSchema } from "../schemas";
+import { askModel } from "../utils/api";
 import { sanitizeForPrompt } from "../utils/sanitize";
 import { C, font } from "../theme";
 
@@ -168,55 +168,21 @@ Format:
   }
 ]`;
 
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (response.status === 429) {
-        const body = await response.json().catch(() => ({}));
-        setErrorKind("rate_limit");
-        setErrorMessage(body.error ?? "Too many requests. Please wait before trying again.");
-        setLoadingQuestions(false);
-        return;
-      }
-      if (!response.ok) {
-        setErrorKind("network");
-        setErrorMessage("The server returned an error. Please try again.");
+      const r = await askModel(prompt, QuestionsSchema);
+      if (!r.ok) {
+        setErrorKind(r.kind);
+        setErrorMessage(
+          r.kind === "rate_limit"
+            ? r.message ?? "Too many requests. Please wait before trying again."
+            : r.kind === "network"
+              ? "The server returned an error. Please try again."
+              : "The AI returned a response we couldn't read."
+        );
         setLoadingQuestions(false);
         return;
       }
 
-      const data = await response.json();
-      const raw = data?.content?.[0]?.text ?? "";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        console.error("Assessment: JSON.parse failed.\nRaw output:", raw);
-        setErrorKind("parse");
-        setErrorMessage("The AI returned a response we couldn't read.");
-        setLoadingQuestions(false);
-        return;
-      }
-
-      const validation = QuestionsSchema.safeParse(parsed);
-      if (!validation.success) {
-        console.error("Assessment: schema validation failed.", validation.error.flatten());
-        setErrorKind("parse");
-        setErrorMessage("The AI returned a response we couldn't read.");
-        setLoadingQuestions(false);
-        return;
-      }
-
-      const validated = validation.data;
+      const validated = r.data;
       await setDoc(itemRef, {
         questions: validated,
         answers: {},
@@ -551,12 +517,12 @@ function OptionBadge({ label, active }) {
 
 function PageShell({ children }) {
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper, fontFamily: font.body, color: C.ink }}>
         <Navbar />
         {children}
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

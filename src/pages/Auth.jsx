@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signupUser, loginUser, signInWithGoogle } from "../auth";
 import { C, font } from "../theme";
-import PageTransition from "../components/PageTransition";
 
 export default function Auth() {
   const [email, setEmail]       = useState("");
@@ -38,7 +37,7 @@ export default function Auth() {
   };
 
   return (
-    <PageTransition>
+    <div className="page-enter">
       <style>{`
         .auth-card { display:flex; min-height:100vh; background:${C.paper}; font-family:${font.body}; }
         .auth-brand { display:flex; flex-direction:column; justify-content:center; padding:52px 48px; background:${C.ink}; width:420px; flex-shrink:0; position:relative; overflow:hidden; }
@@ -171,7 +170,7 @@ export default function Auth() {
           </div>
         </div>
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

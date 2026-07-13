@@ -6,6 +6,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Keeps the big stable vendors in their own long-cached chunks;
+        // without this the main chunk balloons past 500 kB.
         manualChunks: {
           'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           'vendor-react':    ['react', 'react-dom', 'react-router-dom'],

@@ -1,19 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C } from "../theme";
 
 const BULLETS = [
   { icon: "⏱", text: "Takes about 20–25 minutes to complete." },
@@ -84,7 +75,7 @@ export default function QuizInstructions() {
   };
 
   return (
-    <PageTransition>
+    <div className="page-enter">
     <div
       style={{
         minHeight: "100vh",
@@ -345,6 +336,6 @@ export default function QuizInstructions() {
         </button>
       </main>
     </div>
-    </PageTransition>
+    </div>
   );
 }

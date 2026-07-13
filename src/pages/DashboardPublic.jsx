@@ -2,7 +2,6 @@ import React from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { C, font } from "../theme";
 
 // Respect prefers-reduced-motion for hover lifts
@@ -152,7 +151,7 @@ export default function DashboardPublic() {
   };
 
   return (
-    <PageTransition>
+    <div className="page-enter">
     <div
       style={{
         background: C.paper,
@@ -540,7 +539,7 @@ export default function DashboardPublic() {
         </span>
       </footer>
     </div>
-    </PageTransition>
+    </div>
   );
 }
 

@@ -1,14 +1,11 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import {
-  collection, query, orderBy, getDocs,
-  doc, getDoc, setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { C, font } from "../theme";
+import { loadAssessments } from "../utils/assessments";
 
 export default function Plans() {
   const { currentUser } = useAuth();
@@ -25,32 +22,7 @@ export default function Plans() {
     if (!currentUser) return;
     const load = async () => {
       try {
-        // Load assessments
-        const snap = await getDocs(
-          query(collection(db, "assessments", uid, "items"), orderBy("createdAt", "desc"))
-        );
-        let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-        // Legacy fallback: check old single-doc at assessments/{uid}
-        if (list.length === 0) {
-          const legacySnap = await getDoc(doc(db, "assessments", uid));
-          if (legacySnap.exists()) {
-            const d = legacySnap.data();
-            if (d.title || d.result) {
-              list = [{
-                id: "legacy",
-                title: d.title || "My first assessment",
-                goal: d.goal || "career",
-                objective: d.objective || "",
-                result: d.result || null,
-                roadmap: d.roadmap || null,
-                createdAt: d.createdAt || null,
-                updatedAt: d.updatedAt || null,
-                isLegacy: true,
-              }];
-            }
-          }
-        }
+        const list = await loadAssessments(uid);
 
         // Load roadmap progress for each in parallel
         const progResults = await Promise.all(
@@ -102,7 +74,7 @@ export default function Plans() {
   }
 
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper, fontFamily: font.body, color: C.ink }}>
         <Navbar />
 
@@ -256,7 +228,7 @@ export default function Plans() {
           </div>
         </main>
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

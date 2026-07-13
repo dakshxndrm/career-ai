@@ -93,19 +93,3 @@ export const RoadmapSchema = z.object({
     .min(1)
     .max(8),
 });
-
-// ── Assessment item (subcollection doc) ──────────────────────────────────────
-// Stored at assessments/{uid}/items/{assessmentId}
-
-export const AssessmentItemSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  goal: z.enum(["career", "skill"]),
-  objective: z.string().optional().default(""),
-  questions: QuestionsSchema.optional().default([]),
-  answers: z.record(z.string()).optional().default({}),
-  result: ResultSchema.nullable().optional().default(null),
-  roadmap: z.array(z.any()).nullable().optional().default(null), // roadmapPhases array
-  createdAt: z.any().optional(),
-  updatedAt: z.any().optional(),
-});

@@ -1,14 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
-import {
-  doc, getDoc, setDoc, getDocs,
-  collection, orderBy, query, deleteDoc,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { C, font } from "../theme";
+import { loadAssessments } from "../utils/assessments";
 
 const MAX_PHOTO_BYTES = 900 * 1024; // ~900 KB
 
@@ -87,31 +84,7 @@ export default function Profile() {
     if (!currentUser) return;
     const load = async () => {
       try {
-        const snap = await getDocs(
-          query(collection(db, "assessments", uid, "items"), orderBy("createdAt", "desc"))
-        );
-        let items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-        // Legacy fallback: check old single-doc at assessments/{uid}
-        if (items.length === 0) {
-          const legacySnap = await getDoc(doc(db, "assessments", uid));
-          if (legacySnap.exists()) {
-            const d = legacySnap.data();
-            if (d.title || d.result) {
-              items = [{
-                id: "legacy",
-                title: d.title || "My first assessment",
-                goal: d.goal || "career",
-                result: d.result || null,
-                roadmap: d.roadmap || null,
-                createdAt: d.createdAt || null,
-                isLegacy: true,
-              }];
-            }
-          }
-        }
-
-        setAssessments(items);
+        setAssessments(await loadAssessments(uid));
       } catch (err) {
         console.error("Profile: failed to load assessments:", err);
       } finally {
@@ -187,7 +160,7 @@ export default function Profile() {
   const initial = (form.name || currentUser?.email || "U")[0].toUpperCase();
 
   return (
-    <PageTransition>
+    <div className="page-enter">
       <style>{`
         .pf-input { width:100%; padding:12px 14px; border-radius:10px; border:1.5px solid ${C.mist}; background:${C.paper}; color:${C.ink}; font-size:15px; font-family:${font.body}; outline:none; box-sizing:border-box; transition:border-color .15s; }
         .pf-input:focus { border-color:${C.marigold}; }
@@ -424,7 +397,7 @@ export default function Profile() {
           </div>
         </main>
       </div>
-    </PageTransition>
+    </div>
   );
 }
 

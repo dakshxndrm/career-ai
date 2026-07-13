@@ -1,21 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { db } from "../firebase";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ResultSchema } from "../schemas";
+import { askModel } from "../utils/api";
 import { sanitizeForPrompt } from "../utils/sanitize";
-
-const C = {
-  ink: "#16161D",
-  paper: "#FAF8F3",
-  marigold: "#E0922F",
-  sage: "#2F6B57",
-  mist: "#E8E4DA",
-  muted: "#6B6B73",
-};
+import { C } from "../theme";
 
 export default function Results() {
   const { currentUser } = useAuth();
@@ -151,52 +143,21 @@ Return ONLY a valid JSON object, no markdown, no extra text:
   }` : ""}
 }`;
 
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (response.status === 429) {
-        const body = await response.json().catch(() => ({}));
-        setErrorKind("rate_limit");
-        setErrorMessage(body.error ?? "Too many requests. Please wait before trying again.");
-        setLoading(false);
-        return;
-      }
-      if (!response.ok) {
-        setErrorKind("network");
-        setErrorMessage("The server returned an error. Please try again.");
+      const r = await askModel(prompt, ResultSchema);
+      if (!r.ok) {
+        setErrorKind(r.kind);
+        setErrorMessage(
+          r.kind === "rate_limit"
+            ? r.message ?? "Too many requests. Please wait before trying again."
+            : r.kind === "network"
+              ? "The server returned an error. Please try again."
+              : "The AI returned a response we couldn't read."
+        );
         setLoading(false);
         return;
       }
 
-      const data = await response.json();
-      const raw = data?.content?.[0]?.text ?? "";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        console.error("Results: JSON.parse failed.\nRaw output:", raw);
-        setErrorKind("parse");
-        setErrorMessage("The AI returned a response we couldn't read.");
-        setLoading(false);
-        return;
-      }
-
-      const validation = ResultSchema.safeParse(parsed);
-      if (!validation.success) {
-        console.error("Results: schema validation failed.", validation.error.flatten());
-        setErrorKind("parse");
-        setErrorMessage("The AI returned a response we couldn't read.");
-        setLoading(false);
-        return;
-      }
-
-      const validated = validation.data;
+      const validated = r.data;
       if (assessmentId !== "legacy") {
         await setDoc(itemRef, { result: validated, updatedAt: serverTimestamp() }, { merge: true });
       }
@@ -445,9 +406,9 @@ Return ONLY a valid JSON object, no markdown, no extra text:
 
 function PageShell({ children }) {
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper }}><Navbar />{children}</div>
-    </PageTransition>
+    </div>
   );
 }
 

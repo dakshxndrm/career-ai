@@ -7,94 +7,52 @@
  *   MODEL_PROVIDER=ollama
  *   Requires: `ollama serve` running locally, llama3.1:8b pulled.
  *   (`ollama pull llama3.1:8b`)
- *   No other env vars needed.
  *
  * "gemini"  — Google Gemini free tier
  *   MODEL_PROVIDER=gemini
  *   GEMINI_API_KEY=<key>   ← aistudio.google.com/app/apikey
  *   Uses gemini-2.5-flash (1 500 free requests / day as of mid-2025).
  *
- * "anthropic"  — Anthropic Claude
- *   MODEL_PROVIDER=anthropic
- *   ANTHROPIC_API_KEY=<key>   ← console.anthropic.com
- *   Uses claude-haiku-4-5-20251001 (fastest / cheapest Claude model).
+ * Both paths return { content: [{ text }] } so the frontend is unchanged.
  *
- * All three paths return { content: [{ text }] } so the frontend is unchanged.
+ * FIREBASE_SERVICE_ACCOUNT (service-account JSON) is required — it backs both
+ * ID-token verification and the durable per-user rate limit.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const RATE_MAX = 10; // requests per window per user
 const MAX_PROMPT_CHARS = 20000; // hard cap on prompt size
 
-// ── Rate-limit backend ────────────────────────────────────────────────────────
-//
-// In-memory Map is module-level: it survives WITHIN one warm serverless instance
-// but resets on every cold start and is NOT shared across the concurrent
-// instances Vercel may spin up. That makes it ineffective as a real limit in
-// production. When a Firebase service account is configured we use a Firestore
-// sliding-window counter instead, which is durable and shared across instances.
-const rateLimitStore = new Map(); // fallback only
-
-let _db = null;
-function getAdminDb() {
-  if (_db) return _db;
+function getAdminApp() {
+  if (getApps().length) return getApps()[0];
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) return null; // not configured → fall back to in-memory
-  try {
-    const creds = JSON.parse(raw);
-    if (!getApps().length) initializeApp({ credential: cert(creds) });
-    _db = getFirestore();
-    return _db;
-  } catch (err) {
-    console.error("firebase-admin init failed; falling back to in-memory limiter:", err.message);
-    return null;
-  }
+  if (!raw) return null;
+  return initializeApp({ credential: cert(JSON.parse(raw)) });
 }
 
+// Firestore sliding-window counter: durable and shared across serverless
+// instances (an in-memory Map would reset on cold starts and never sync).
 // Returns { allowed: boolean, resetMins: number }
-async function checkRateLimit(uid) {
+async function checkRateLimit(db, uid) {
   const now = Date.now();
-  const db = getAdminDb();
-
-  // ── Durable path: Firestore sliding window ──
-  if (db) {
-    const ref = db.collection("rateLimits").doc(uid);
-    try {
-      return await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        let hits = (snap.exists ? snap.data().hits : []) || [];
-        hits = hits.filter((t) => now - t < RATE_WINDOW_MS);
-        if (hits.length >= RATE_MAX) {
-          const resetMins = Math.ceil((hits[0] + RATE_WINDOW_MS - now) / 60_000);
-          return { allowed: false, resetMins };
-        }
-        hits.push(now);
-        tx.set(ref, { hits, updatedAt: FieldValue.serverTimestamp() });
-        return { allowed: true, resetMins: 0 };
-      });
-    } catch (err) {
-      console.error("Firestore rate-limit transaction failed:", err.message);
-      // Fail-open to in-memory rather than blocking all traffic on a Firestore blip.
+  const ref = db.collection("rateLimits").doc(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    let hits = (snap.exists ? snap.data().hits : []) || [];
+    hits = hits.filter((t) => now - t < RATE_WINDOW_MS);
+    if (hits.length >= RATE_MAX) {
+      const resetMins = Math.ceil((hits[0] + RATE_WINDOW_MS - now) / 60_000);
+      return { allowed: false, resetMins };
     }
-  }
-
-  // ── Fallback path: in-memory (non-distributed) ──
-  const record = rateLimitStore.get(uid) ?? { count: 0, windowStart: now };
-  if (now - record.windowStart >= RATE_WINDOW_MS) {
-    record.count = 0;
-    record.windowStart = now;
-  }
-  if (record.count >= RATE_MAX) {
-    const resetMins = Math.ceil((record.windowStart + RATE_WINDOW_MS - now) / 60_000);
-    return { allowed: false, resetMins };
-  }
-  record.count += 1;
-  rateLimitStore.set(uid, record);
-  return { allowed: true, resetMins: 0 };
+    hits.push(now);
+    tx.set(ref, { hits, updatedAt: FieldValue.serverTimestamp() });
+    return { allowed: true, resetMins: 0 };
+  });
 }
 
 export default async function handler(req, res) {
@@ -102,22 +60,32 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const app = getAdminApp();
+  if (!app) {
+    return res.status(503).json({ error: "FIREBASE_SERVICE_ACCOUNT env var is not set" });
+  }
+
   // ── 1. Require a Firebase ID token ────────────────────────────────────────
   const authHeader = req.headers.authorization ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Authorization header missing or malformed" });
   }
-  const idToken = authHeader.slice(7);
 
   let uid;
   try {
-    uid = await verifyFirebaseToken(idToken);
+    ({ uid } = await getAuth(app).verifyIdToken(authHeader.slice(7)));
   } catch {
     return res.status(401).json({ error: "Invalid or expired Firebase token" });
   }
 
-  // ── 2. Per-user rate limit (durable when service account is configured) ───
-  const { allowed, resetMins } = await checkRateLimit(uid);
+  // ── 2. Per-user rate limit ─────────────────────────────────────────────────
+  let allowed, resetMins;
+  try {
+    ({ allowed, resetMins } = await checkRateLimit(getFirestore(app), uid));
+  } catch (err) {
+    console.error("Rate-limit transaction failed:", err.message);
+    return res.status(503).json({ error: "Rate limiter unavailable, try again shortly" });
+  }
   if (!allowed) {
     return res.status(429).json({
       error: `Rate limit reached. Try again in ${resetMins} minute(s).`,
@@ -137,7 +105,8 @@ export default async function handler(req, res) {
   // ── 4. Dispatch to the configured model provider ──────────────────────────
   let raw;
   try {
-    raw = await callModel(prompt);
+    const provider = (process.env.MODEL_PROVIDER ?? "ollama").toLowerCase();
+    raw = provider === "gemini" ? await callGemini(prompt) : await callOllama(prompt);
   } catch (err) {
     const status = err instanceof ProviderError ? err.status : 502;
     return res.status(status).json({ error: err.message });
@@ -147,16 +116,6 @@ export default async function handler(req, res) {
   const text = raw.replace(/```json|```/g, "").trim();
 
   return res.status(200).json({ content: [{ text }] });
-}
-
-// ── Provider dispatch ─────────────────────────────────────────────────────────
-
-async function callModel(prompt) {
-  const provider = (process.env.MODEL_PROVIDER ?? "ollama").toLowerCase();
-
-  if (provider === "gemini") return callGemini(prompt);
-  if (provider === "anthropic") return callAnthropic(prompt);
-  return callOllama(prompt); // default: ollama
 }
 
 // ── Ollama ────────────────────────────────────────────────────────────────────
@@ -215,62 +174,9 @@ async function callGemini(prompt) {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
-// ── Anthropic ────────────────────────────────────────────────────────────────
-
-async function callAnthropic(prompt) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new ProviderError(500, "ANTHROPIC_API_KEY env var is not set");
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new ProviderError(502, `Anthropic error: ${detail}`);
-  }
-
-  const data = await res.json();
-  return data?.content?.[0]?.text ?? "";
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 class ProviderError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
   }
-}
-
-async function verifyFirebaseToken(idToken) {
-  const apiKey = process.env.FIREBASE_WEB_API_KEY;
-  if (!apiKey) throw new Error("FIREBASE_WEB_API_KEY env var is not set");
-
-  const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken }),
-    }
-  );
-
-  if (!res.ok) throw new Error("Token lookup failed");
-
-  const body = await res.json();
-  const user = body.users?.[0];
-  if (!user?.localId) throw new Error("No user in token response");
-
-  return user.localId;
 }

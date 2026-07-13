@@ -28,7 +28,7 @@
 User (React SPA on Vercel)
   → api/chat.js (Vercel Serverless Function)
        ├─ verifies Firebase ID token (Bearer auth)
-       ├─ per-user rate limit (10 req/hr, in-memory Map)
+       ├─ per-user rate limit (10 req/hr, Firestore sliding window)
        └─ routes to AI provider
             ├─ LOCAL: Ollama (llama3.1:8b at localhost:11434)
             └─ PROD:  Google Gemini (gemini-2.5-flash, free tier)
@@ -67,7 +67,7 @@ roadmapProgress/{uid}/items/{id}     ← completed{skillId: bool}, activeDays[]
 ## Key Engineering Decisions
 
 **Why a serverless function for the AI endpoint instead of calling the API from the browser?**
-Calling Gemini directly from the client would expose the API key in the JavaScript bundle. The `/api/chat.js` serverless function keeps the key server-side, verifies the Firebase ID token on every request, and enforces a per-user rate limit using an in-memory Map. Even if someone reverse-engineers the client code, they cannot make AI requests without a valid Firebase session.
+Calling Gemini directly from the client would expose the API key in the JavaScript bundle. The `/api/chat.js` serverless function keeps the key server-side, verifies the Firebase ID token on every request, and enforces a per-user rate limit with a Firestore sliding-window counter (durable across serverless instances). Even if someone reverse-engineers the client code, they cannot make AI requests without a valid Firebase session.
 
 **Why Zod validation on every AI response?**
 Large language models occasionally return malformed JSON or omit required fields — especially under the complex multi-schema prompts used here (diagnostic questions, results, roadmap phases). Every AI response is validated through a strict Zod schema before it touches React state. If validation fails, the UI shows a typed error card with a retry button rather than crashing. The schemas also serve as the canonical contract between the prompt engineering and the rendering code, so changes to the AI output shape have a single place to land.
@@ -121,7 +121,7 @@ All 11 page components load via `React.lazy` + `Suspense`. Rollup `manualChunks`
 |-----------------------|-------------------|----------------------------------------------------------|
 | `MODEL_PROVIDER`      | Always            | Set to `ollama` (local) or `gemini` (production)         |
 | `GEMINI_API_KEY`      | Production AI     | [aistudio.google.com](https://aistudio.google.com)       |
-| `FIREBASE_PROJECT_ID` | API token verify  | Firebase Console → Project Settings → General            |
+| `FIREBASE_SERVICE_ACCOUNT` | Always (token verify + rate limit) | Firebase Console → Project Settings → Service accounts → Generate new private key (paste the JSON as one line) |
 
 Firebase client config (`apiKey`, `authDomain`, etc.) lives in `src/firebase.js` and is safe to expose — it is scoped by Firestore security rules, not by keeping the key secret.
 

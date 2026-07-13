@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
-import PageTransition from "../components/PageTransition";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import {
@@ -9,21 +8,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { C, font } from "../theme";
-
-function computeStreak(activeDays = []) {
-  if (!activeDays.length) return 0;
-  const sorted = [...new Set(activeDays)].sort().reverse();
-  const today = new Date().toISOString().slice(0, 10);
-  const yest  = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-  if (sorted[0] !== today && sorted[0] !== yest) return 0;
-  let streak = 1;
-  for (let i = 1; i < sorted.length; i++) {
-    const expected = new Date(new Date(sorted[i - 1]).getTime() - 864e5).toISOString().slice(0, 10);
-    if (sorted[i] === expected) streak++;
-    else break;
-  }
-  return streak;
-}
+import { fetchLegacyAssessment } from "../utils/assessments";
+import { computeStreak } from "../utils/roadmapUtils";
 
 export default function DashboardPrivate() {
   const { userData, currentUser } = useAuth();
@@ -70,21 +56,8 @@ export default function DashboardPrivate() {
 
         // Legacy fallback: check old single-doc at assessments/{uid}
         if (!heroItem) {
-          const legacySnap = await getDoc(doc(db, "assessments", uid));
-          if (legacySnap.exists()) {
-            const d = legacySnap.data();
-            if (d.title || d.result) {
-              heroItem = {
-                id: "legacy",
-                title: d.title || "My first assessment",
-                goal: d.goal || "career",
-                result: d.result || null,
-                roadmap: d.roadmap || null,
-                isLegacy: true,
-              };
-              setTotalCount(1);
-            }
-          }
+          heroItem = await fetchLegacyAssessment(uid);
+          if (heroItem) setTotalCount(1);
         }
 
         setCurrent(heroItem);
@@ -116,7 +89,7 @@ export default function DashboardPrivate() {
   const heroId = current?.id;
 
   return (
-    <PageTransition>
+    <div className="page-enter">
       <div style={{ minHeight: "100vh", background: C.paper, fontFamily: font.body, color: C.ink }}>
         <Navbar />
 
@@ -265,7 +238,7 @@ export default function DashboardPrivate() {
           )}
         </main>
       </div>
-    </PageTransition>
+    </div>
   );
 }
 
