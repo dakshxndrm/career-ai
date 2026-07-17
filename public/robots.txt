@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /assessment
+Disallow: /results
+Disallow: /roadmap
+Disallow: /plans
+Disallow: /resources
+Disallow: /quiz-instructions
+
+Sitemap: https://career-ai-220204.vercel.app/sitemap.xml
